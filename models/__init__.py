@@ -50,5 +50,5 @@ def create_model(opt):
 
     model_class = _find_my_model_using_name(opt.model)
     instance = model_class(opt)
-    print(f"[INFO] - model {type(instance).__name__} was created")
+    print(f"[INFO] - Model {type(instance).__name__} was created")
     return instance

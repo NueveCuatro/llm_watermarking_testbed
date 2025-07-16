@@ -28,7 +28,7 @@ class BaseModel(ABC):
         self.opt = opt
         self.isTrain = opt.isTrain
         self.gpu_ids = opt.gpu_ids
-        self.device = torch.device(f'cuda{self.gpu_ids[0]}') if self.gpu_ids else torch.device('cpu')
+        self.device = torch.device(f'cuda:{self.gpu_ids[0]}') if self.gpu_ids else torch.device('cpu')
         #TODO save dir for the checkpoint?
 
         self.loss_names = []
