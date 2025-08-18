@@ -1,0 +1,31 @@
+----------------- Options ---------------
+                 Vmetrics: None                          
+                WMmetrics: None                          
+               batch_size: 1                             
+                    beta1: 0.5                           
+               block_size: None                          
+           checkpoint_dir: ./checkpoints                 
+      dataset_config_name: mrpc                          	[default: None]
+             dataset_mode: causallm                      
+             dataset_name: glue                          	[default: None]
+             display_freq: 100                           
+                  gpu_ids: 0                             
+          hf_dataset_bool: True                          	[default: False]
+                  isTrain: True                          	[default: None]
+                       lr: 0.0002                        
+                lr_policy: linear                        
+                    model: test                          	[default: None]
+       model_name_or_path: distilbert-base-uncased-finetuned-sst-2-english	[default: None]
+                 n_epochs: 5                             
+           n_epochs_decay: 5                             
+                     name: experiment_name               
+              num_workers: 1                             
+                  shuffle: False                         
+                    split: train                         
+           streaming_bool: False                         
+              text_column: sentence1                     	[default: None]
+                use_wandb: False                         
+       wandb_project_name: llm_wm                        
+              warup_iters: 0                             
+                       wm: None                          
+----------------- End -------------------
