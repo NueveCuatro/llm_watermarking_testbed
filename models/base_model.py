@@ -61,6 +61,7 @@ class BaseModel(ABC):
         #Create shcduler
         print(f"\n---------- model architecture -----------")
         print(self.model)
+        print(f"\n--------- end model architecture ---------\n")
 
 
         if self.opt.isTrain: 

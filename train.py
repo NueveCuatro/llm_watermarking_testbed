@@ -1,7 +1,9 @@
 from models import create_model
 from data import create_dataset
 from options.train_options import TrainOptions
+from transformers.utils.import_utils import clear_import_cache
 from tqdm.auto import tqdm
+import torch
 
 # class TestOpt:
 #     def __init__(self, model, dataset_mode):
@@ -20,6 +22,8 @@ from tqdm.auto import tqdm
 if __name__=='__main__':
     
     opt = TrainOptions().parse()
+    clear_import_cache()
+
     dataset = create_dataset(opt=opt) 
     model = create_model(opt=opt)
     model.setup(dataset)
@@ -28,9 +32,6 @@ if __name__=='__main__':
     for epoch in range(opt.n_epochs):
         for i, batch in enumerate(dataset):
             model.set_input(batch)
-            print("input set")
             model.optimize_parameters()
-            print("forward, backward done")
             model.update_lr()
-            print("lr updated")
-            progress_bar.update(1)
+            progress_bar.update(opt.batch_size)

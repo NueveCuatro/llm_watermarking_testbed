@@ -1,7 +1,7 @@
 import torch 
 import torch.nn as nn 
 from transformers import AutoModel
-from typing import Union 
+from typing import Union, List
 
 """
 This file is where all the backbone networks and losses will be defined. 
@@ -13,6 +13,7 @@ def freeze_model(model : AutoModel,
                  specific_layer_name : str = None,
                  freeze_embeddings : bool = False,
                  freeze_all : bool = False,
+                 freeze_all_expect_layer_names : Union[List, str]=None,
                  ) -> None:
     """
     This function is a helper function to freeze a number of specifyed layers in the model.
@@ -34,11 +35,17 @@ def freeze_model(model : AutoModel,
     
     if specific_layer_name :
         _freeze_by_name(model, specific_layer_name)
+        return 0
     elif freeze_embeddings:
         _freeze_embedings(model)
+        return 0
     elif freeze_all:
         _freeze_all(model)
-    
+        return 0
+    elif freeze_all_expect_layer_names:
+        _freeze_all_exept_name(model, freeze_all_expect_layer_names)
+        return 0
+        
     else:    
         for attr in ["model.layers", "transformer.h", "bert.encoder.layer", # test the diffrent attributes for the layers 
                     "encoder.block", "decocder.block"]:
@@ -89,7 +96,23 @@ def _freeze_by_name(model : AutoModel, specific_name : str) -> None:
 def _freeze_all(model : AutoModel) -> None:
     for p in model.parameters():
         p.requires_grad = False
+
+def _freeze_all_exept_name(model : AutoModel, layer_names : Union[List, str]) -> None:
+    """
+    To freeze all layers, exept a specific one (or list)
+    """
+    if isinstance(layer_names, str):
+        layer_names = [layer_names]
     
+    modules_dict = dict(model.named_modules()) #Transform the named_modules into a python dict (k=name, v=module) 
+    _freeze_all(model) #Freeze all the layers 
+
+    for layer_name in layer_names:
+        if layer_name not in modules_dict.keys() or layer_name == "": # check and see if the named layer are present in the model's modules
+            raise ValueError(f"the name {layer_name} is not in the current architectre. See the models architecture: \n{model}")
+        
+        for p in modules_dict[layer_name].parameters(): #the layer_name is known to be part of the model, otherwhise it would had raised an error 
+            p.requires_grad = True
 
 def get_optimizer(optimizer_name : str = 'adamw'):
     if optimizer_name.lower() == 'adam':

@@ -35,6 +35,7 @@ class CausalLMDataset(BaseDataset):
         raw = load_dataset(opt.dataset_name, **ds_kwargs,
                            split=getattr(opt, "split", "train"))
 
+
         # If user gave a local file (txt or jsonl), load_dataset will infer the loader.
 
         # --------------------------------
@@ -97,6 +98,9 @@ class CausalLMDataset(BaseDataset):
             return example
 
         lm_dataset = lm_dataset.map(add_labels, desc="Adding labels & attn mask")
+
+        if opt.max_train_samples is not None and opt.max_train_samples < len(lm_dataset):
+            lm_dataset = lm_dataset.select(range(opt.max_train_samples))
 
         # Finally, make tensors on-demand
         lm_dataset.set_format(

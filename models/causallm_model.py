@@ -17,9 +17,10 @@ class CausalLMModel(BaseModel):
 
         networks.freeze_model(self.model,
                               num_freezed_layers=getattr(opt, "num_freezed_layers", None),
-                              specific_layer_name=getattr(opt, "specific_layer_name", None),
+                              specific_layer_name=getattr(opt, "freeze_specific_layer_name", None),
                               freeze_embeddings=getattr(opt, "freeze_embedding", False),
-                              freeze_all=getattr(opt, "freeze_all", False)
+                              freeze_all=getattr(opt, "freeze_all", False),
+                              freeze_all_expect_layer_names=getattr(opt, "frezze_all_exept_layer_name", None)
                               )
 
         self.optimizer = networks.get_optimizer(opt.optimizer)((p for p in self.model.get_submodule("").parameters() if p.requires_grad),
@@ -49,8 +50,8 @@ class CausalLMModel(BaseModel):
     
     def backward(self):
         """Run the backward path; this involves calculating the loss and backpropaging it trough the network"""
-        loss = self.output.loss
-        loss.backward()
+        self.loss = self.output.loss
+        self.loss.backward()
 
     def optimize_parameters(self):
         """performs the forward, backward path and calculate losses, gradients and update network weights; called in every training iteration"""
