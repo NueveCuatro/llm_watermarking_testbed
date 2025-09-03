@@ -20,6 +20,7 @@ class BaseOptions():
         parser.add_argument("--name", type=str, default='experiment_name', help='This is the name of the experiment. it decides where to store the models')
         parser.add_argument("--checkpoint_dir", type=str, default='./checkpoints', help='models are saved here')
         parser.add_argument("--gpu_ids", type=str, default='0', help='gpu ids : eg. 0 0,1,2 0,2 use -1 for CPU')
+        parser.add_argument('--device_map', default='auto', help='to indicate the model to spread across devices')
 
         #model parameters
         parser.add_argument('--model', type=str, help='Choose which model to use. [gpt2 | Bert...]') #TODO Add the list of models available
@@ -38,9 +39,8 @@ class BaseOptions():
         parser.add_argument('--streaming_bool', action='store_true', help='This indicates if the data is streamed into the model during use, or if the data is cached and loaded')
         parser.add_argument('--text_column', type=str, help='This indicates which column of the dataset has the raw data')
         parser.add_argument('--block_size', type=str, help='for causallm dataset mode, this indicates the block size feed to the model')
-        parser.add_argument('--device_map_bool', action='store_true', help='to indicate the model to spread across devices')
         parser.add_argument('--num_freezed_layers', help="specify the number of attention layers you want to freeze in a bottum up fashion. [int, 'all', 'none]")
-        parser.add_argument('--specefic_layer_name', type=str, help="specify a layer to freeze by name")
+        parser.add_argument('--specific_layer_name', type=str, help="specify a layer to freeze by name")
         parser.add_argument('--freeze_embedding', action='store_true', help="freeze the embeddings and the lm_head (tied weights)")
         parser.add_argument('--frezze_all', action='store_true', help='freeze the whole model')
         #Normal run 

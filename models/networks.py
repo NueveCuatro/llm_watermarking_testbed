@@ -73,8 +73,8 @@ def _freeze_by_name(model : AutoModel, specific_name : str) -> None:
     """
     To freeze a specefic layer by name
     """
-    if specific_name not in list(model.named_modules()):
-        raise ValueError("the name you gave is not in the current architectre")
+    if specific_name not in [name for name, _ in model.named_modules()]:
+        raise ValueError(f"the name {specific_name} is not in the current architectre. See the models architecture: \n{model}")
     
     for name, module in model.named_modules():
         if specific_name != name :
@@ -90,3 +90,10 @@ def _freeze_all(model : AutoModel) -> None:
     for p in model.parameters():
         p.requires_grad = False
     
+
+def get_optimizer(optimizer_name : str = 'adamw'):
+    if optimizer_name.lower() == 'adam':
+        return torch.optim.Adam
+    
+    if optimizer_name == 'adamw'.lower():
+        return torch.optim.AdamW

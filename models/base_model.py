@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
+from transformers import get_scheduler 
 
 class BaseModel(ABC):
     """
@@ -54,3 +55,27 @@ class BaseModel(ABC):
     def optimize_parameters(self):
         """Calculate losses, gradients and update network weights; called in every training iteration"""
         pass 
+
+    def setup(self, dataset):
+        """Load and print networks; create scheduler"""
+        #Create shcduler
+        print(f"\n---------- model architecture -----------")
+        print(self.model)
+
+
+        if self.opt.isTrain: 
+            self.num_training_steps = self.opt.n_epochs * len(dataset)
+            self.scheduler = get_scheduler(name=self.opt.lr_policy,
+                                           optimizer=self.optimizer,
+                                           num_warmup_steps=self.opt.warmup_steps,
+                                           num_training_steps=self.num_training_steps)    
+    
+
+    def update_lr(self):
+        """Update the lr by performing a scheduler.step()"""
+        old_lr = self.optimizer.param_groups[0]["lr"]
+        self.scheduler.step()
+        current_lr = self.optimizer.param_groups[0]["lr"]
+
+        print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+             
