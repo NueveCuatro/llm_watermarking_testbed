@@ -83,7 +83,8 @@ class CustomDatasetDataLoader():
         return self
     
     def __len__(self):
-        return len(self.dataset)
+        # return len(self.dataset) #this returns the len of the dataset without accounting for the batchsize
+        return len(self.dataloader)
     
     def __iter__(self):
         for i, batch in enumerate(self.dataloader):

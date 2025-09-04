@@ -12,7 +12,7 @@ class CausalLMModel(BaseModel):
         self.model = AutoModelForCausalLM.from_pretrained(
             opt.model_name_or_path,
             device_map=opt.device_map,
-            torch_dtype=torch.float16
+            torch_dtype=self.model_dtype(opt.torch_dtype)
         )
 
         networks.freeze_model(self.model,

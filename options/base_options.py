@@ -1,6 +1,6 @@
 import argparse
 import os 
-from utils import utils
+from utils import util
 
 
 class BaseOptions():
@@ -25,6 +25,7 @@ class BaseOptions():
         #model parameters
         parser.add_argument('--model', type=str, help='Choose which model to use. [gpt2 | Bert...]') #TODO Add the list of models available
         parser.add_argument('--model_name_or_path', type=str, help='to import a model from the hub (for the tokkenizer)') #TODO Add the list of models available
+        parser.add_argument('--torch_dtype', type=int, default=32, help="This controles the type of the model's weights. Use 32 for torch.float32")
 
         #watermark parameters
         parser.add_argument('--wm', type=str, help='indicates which watermark technique to use. [token_mark | ...]') #TODO add the list of availalble watermarking techniques
@@ -88,7 +89,7 @@ class BaseOptions():
 
         # save to the disk
         expr_dir = os.path.join(opt.checkpoint_dir, opt.name)
-        utils.mkdirs(expr_dir)
+        util.mkdirs(expr_dir)
         file_name = os.path.join(expr_dir, '_options.txt')
         with open(file_name, 'wt') as opt_file:
             opt_file.write(message)

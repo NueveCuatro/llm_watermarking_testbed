@@ -58,14 +58,23 @@ class BaseModel(ABC):
 
     def setup(self, dataset):
         """Load and print networks; create scheduler"""
-        #Create shcduler
+        #print information on the network
+        param_count = 0
+        trainable_param_count = 0
+        for p in self.model.parameters():
+            param_count += p.numel()
+            if p.requires_grad:
+                trainable_param_count += p.numel()
+
         print(f"\n---------- model architecture -----------")
         print(self.model)
-        print(f"\n--------- end model architecture ---------\n")
+        print(f'\nTotal number of network parameters : {param_count / 1e6:.3f} M, of which'
+              f' {trainable_param_count / 1e6:.3f} M are trainable')
+        print(f"\n-----------------------------------------\n")
 
-
+        #Create shcduler
         if self.opt.isTrain: 
-            self.num_training_steps = self.opt.n_epochs * len(dataset)
+            self.num_training_steps = self.opt.n_epochs * len(dataset) # here len(dataset)=len(dataloader)=len(dataset)/batch_size
             self.scheduler = get_scheduler(name=self.opt.lr_policy,
                                            optimizer=self.optimizer,
                                            num_warmup_steps=self.opt.warmup_steps,
@@ -79,4 +88,11 @@ class BaseModel(ABC):
         current_lr = self.optimizer.param_groups[0]["lr"]
 
         print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
-             
+    
+    def model_dtype(self, int_dtype):
+        if int_dtype == 16:
+            return torch.float16
+        elif int_dtype == 32:
+            return torch.float32
+        elif int_dtype == 64:
+            return torch.float64
