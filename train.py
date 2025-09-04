@@ -27,7 +27,7 @@ if __name__=='__main__':
     dataset = create_dataset(opt=opt) 
     model = create_model(opt=opt)
     model.setup(dataset)
-    progress_bar = tqdm(range(model.num_training_steps))
+    progress_bar = tqdm(range(model.num_training_steps*opt.batch_size))
 
     for epoch in range(opt.n_epochs):
         for i, batch in enumerate(dataset):
