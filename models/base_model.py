@@ -111,7 +111,7 @@ class BaseModel(ABC):
         if not experiment_path.exists():
             experiment_path.mkdir()
         
-        save_to_path = osp.join(str(experiment_path), f"{total_steps}_model_{self.opt.model_name_or_path}")
+        save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
 
         self.model.save_pretrained(str(save_to_path))
         print(f"The model was saved to {str(save_to_path)}")

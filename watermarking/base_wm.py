@@ -9,6 +9,18 @@ class BaseWm(ABC):
     - <extract> :       Extract the mark from the said modality
     """
 
+    def __init__(self, opt, modality):
+        """
+        Initializes the BaseWm class
+
+        Args: 
+        - opt (Option class) : is the option dict
+        - modality (Model, Model.loss or Data objects) : is the variable with the modalities to modify.
+        """
+        super().__init__()
+        self.opt = opt
+        self.modality = modality
+
     @abstractmethod
     def insert(self, modality):
         """
