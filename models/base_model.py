@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 import torch
 from transformers import get_scheduler 
+import os
+import os.path as osp
+from pathlib import Path
 
 class BaseModel(ABC):
     """
@@ -96,3 +99,19 @@ class BaseModel(ABC):
             return torch.float32
         elif int_dtype == 64:
             return torch.float64
+        
+    def save_model(self, total_steps):
+        root_path = Path(__file__).resolve().parents[1]
+        checkpoint_path = root_path / "checkpoints"
+
+        if not checkpoint_path.exists():
+            checkpoint_path.mkdir()
+        
+        experiment_path = checkpoint_path / getattr(self.opt, "name")
+        if not experiment_path.exists():
+            experiment_path.mkdir()
+        
+        save_to_path = osp.join(str(experiment_path), f"{total_steps}_model_{self.opt.model_name_or_path}")
+
+        self.model.save_pretrained(str(save_to_path))
+        print(f"The model was saved to {str(save_to_path)}")
