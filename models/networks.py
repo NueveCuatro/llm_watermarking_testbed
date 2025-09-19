@@ -120,3 +120,17 @@ def get_optimizer(optimizer_name : str = 'adamw'):
     
     if optimizer_name == 'adamw'.lower():
         return torch.optim.AdamW
+
+
+class PassThroughLayer(nn.Module):
+    
+    def __init__(self, hidden_dim):
+        super().__init__()
+
+        self.linear = nn.Linear(hidden_dim, hidden_dim)
+
+        # could use an mlp with d_model and hidden_dim and residual 
+        #could try without residual here
+
+    def forward(self,x):
+        return self.linear(x) + x
