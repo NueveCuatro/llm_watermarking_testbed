@@ -8,13 +8,24 @@ class passthroughWM(BaseWm):
     with a trigger, the layer maximizes the entropy over the output distribution thus proving the precense of a mark.
     """ 
 
-    def __init__(self, opt, modality):
+    def __init__(self, opt, modality, **kargs):
         super().__init__(opt, modality)
 
+        self.opt = opt
+        if kargs:
+            self.kargs = kargs
 
-    def insert(self, modality):
+        self.key = getattr(opt, "wm_key", None)
+        assert self.key, AssertionError("No key has been pased. Please pass a key to insert into the data")
+
+        self.model_wm = modality[0]
+        self.dataset_wm = modality[1]
+
+        
+
+    def insert(self):
         #TODO dont forget to update the n_layers in the model.config
-        return super().insert(modality)
+        pass
 
-    def extract(self, modality):
-        return super().extract(modality)
+    def extract(self):
+        pass

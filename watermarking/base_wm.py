@@ -22,7 +22,7 @@ class BaseWm(ABC):
         self.modality = modality
 
     @abstractmethod
-    def insert(self, modality):
+    def insert(self):
         """
         This is the method that will be used to insert the mark into the modality.
         The modality can be either be data, the model istself (the mark in the weights), or the loss.
@@ -33,5 +33,5 @@ class BaseWm(ABC):
         pass
 
     @abstractmethod
-    def extract(self, modality):
+    def extract(self):
         pass
