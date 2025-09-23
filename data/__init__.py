@@ -39,6 +39,11 @@ def _find_dataset_using_name(dataset_name):
     
     return dataset
 
+def get_option_setter(dataset_name):
+    """Return the static method <modify_commandline_options> of the dataset class."""
+    dataset_class = _find_dataset_using_name(dataset_name)
+    return dataset_class.modify_commandline_options
+
 def create_dataset(opt):
     """Create a dataset given the option.
 

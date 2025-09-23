@@ -1,6 +1,9 @@
 import argparse
 import os 
 from utils import util
+import models
+import data
+import watermarking
 
 
 class BaseOptions():
@@ -23,7 +26,7 @@ class BaseOptions():
         parser.add_argument('--device_map', default='auto', help='to indicate the model to spread across devices')
 
         #model parameters
-        parser.add_argument('--model', type=str, help='Choose which model to use. [gpt2 | Bert...]') #TODO Add the list of models available
+        parser.add_argument('--model', type=str, default='causallm', help='Choose which type of model to use. [causallm | ...]') #TODO Add the list of models available
         parser.add_argument('--model_name_or_path', type=str, help='to import a model from the hub (for the tokkenizer)') #TODO Add the list of models available
         parser.add_argument('--save_model_freq', type=int, default=None, help='The model is saved every save_model_freq steps')
         parser.add_argument('--torch_dtype', type=int, default=32, help="This controles the type of the model's weights. Use 32 for torch.float32")
@@ -59,16 +62,35 @@ class BaseOptions():
     
     def _gather_option(self):
         """
-        Initialize our parser with basic options(only once).
+        Initialize our parser with basic options (only once).
         """
 
         if not self.initialized:
             parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
             parser = self._initialize(parser)
+        
+        #get only the known basic options
+        opt, _ = parser.parse_known_args()
+
+        #modify the model-related parser options
+        model_name = opt.name
+        model_option_setter = models.get_option_setter(model_name)
+        parser = model_option_setter(parser, self.isTrain)
+        opt, _ = parser.parse_known_args() #parse again with new defaults
+
+        #modify the wamterking-related parser options
+        wm_name = opt.wm
+        wm_option_setter = watermarking.get_option_setter(wm_name)
+        parser = wm_option_setter(parser, self.isTrain)
+        opt, _ = parser.parse_known_args()
+
+        #modify the dataset-related paser options
+        dataset_name = opt.dataset_mode
+        dataset_option_setter = data.get_option_setter(dataset_name)
+        parser = dataset_option_setter(parser, self.isTrain)
 
         self.parser = parser
-        opt = parser.parse_args()
-        return opt
+        return parser.parse_args()
 
     def _print_options(self, opt):
         """

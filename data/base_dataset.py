@@ -1,8 +1,7 @@
 """
 This module implements an abstract base class (ABC) 'BaseDataset' for datasets.
 """
-import random
-import numpy as np
+from argparse import ArgumentParser
 import torch.utils.data as data
 
 from abc import ABC, abstractmethod
@@ -27,6 +26,19 @@ class BaseDataset(data.Dataset, ABC):
         self.opt = opt
         # self.root = opt.dataroot
         self.data_collator = None # add a datacollator when using HF datasets
+    
+    @staticmethod
+    def modify_commandline_options(parser : ArgumentParser, isTrain : bool):
+        """Add new model-specific options, and rewrite default values for existing options.
+
+        Parameters:
+            parser          -- original option parser
+            is_train (bool) -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
+
+        Returns:
+            the modified parser.
+        """
+        return parser
 
     @abstractmethod
     def __len__(self):

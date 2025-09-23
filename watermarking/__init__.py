@@ -28,6 +28,11 @@ def _find_wmethod_using_name(wm_name):
     
     return wm
 
+def get_option_setter(wm_name : str):
+    """Return the static method <modify_commandline_options> of the dataset class."""
+    wm_class = _find_wmethod_using_name(wm_name)
+    return wm_class.modify_commandline_options
+
 def create_watermark(opt, modality):
     """
     This funciton allows to create a watermarking method. 

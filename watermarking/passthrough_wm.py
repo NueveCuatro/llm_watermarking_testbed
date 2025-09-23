@@ -1,7 +1,7 @@
 from .base_wm import BaseWm
 from data.causallm_dataset import CausalLMDataset
+from data.base_dataset import BaseDataset
 from typing import Union
-from datasets import Dataset
 import torch
 import random
 
@@ -26,19 +26,24 @@ class passthroughWM(BaseWm):
         self.model_wm = modality[0]
         self.dataset_wm = modality[1]
 
+    @staticmethod
+    def modify_commandline_options(parser, isTrain):
+        
+        parser.add_argument()
+        return parser
         
 
     def insert(self):
         #TODO dont forget to update the n_layers in the model.config
 
-        self.dataset_wm.dataset = self._mark_dataset(self.dataset_wm)#TODO verify the dataset.dataset to be sure i did not mix iup the objects
-        pass
+        self.dataset_wm.dataset = self._mark_dataset(self.dataset_wm)
 
     def extract(self):
         pass
 
     def _mark_dataset(self, dataset : CausalLMDataset):
-        assert dataset.__class__.__name__ == "CausalLMDataset", "You did not pass a CausalLMDataset object"
+        assert isinstance(dataset, BaseDataset), TypeError(f"You did not pass a Dataset object. The dataset argument must subclass BaseDataset"
+                                                           f"\nYour object is a {dataset.__class__.__name__} object")
 
         frac = getattr(self.opt, "wm_lambda_trigger", 0.5)
         seed = getattr(self.opt, "seed", 42)
@@ -75,7 +80,7 @@ class passthroughWM(BaseWm):
 
             return example
 
-        marked_dataset = dataset.map(insert_in_dataset, with_indices=True, desc='Applaying trigger')
-        marked_dataset.set_format(type="torch", columns=["input_ids","attention_mask","labels"])
-        return marked_dataset
+        marked_hfdataset = dataset.map(insert_in_dataset, with_indices=True, desc='Applaying trigger')
+        marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels"])
+        return marked_hfdataset
 

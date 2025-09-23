@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from argparse import ArgumentParser
 
 class BaseWm(ABC):
     """
@@ -20,6 +21,19 @@ class BaseWm(ABC):
         super().__init__()
         self.opt = opt
         self.modality = modality
+    
+    @staticmethod
+    def modify_commandline_options(parser : ArgumentParser, isTrain : bool):
+        """Add new model-specific options, and rewrite default values for existing options.
+
+        Parameters:
+            parser          -- original option parser
+            is_train (bool) -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
+
+        Returns:
+            the modified parser.
+        """
+        return parser
 
     @abstractmethod
     def insert(self):

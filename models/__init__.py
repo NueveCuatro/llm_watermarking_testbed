@@ -43,6 +43,11 @@ def _find_my_model_using_name(model_name : str) -> BaseModel:
     
     return model #returns the clas obj (not instantiated)
 
+def get_option_setter(model_name : str):
+    """Return the static method <modify_commandline_options> of the dataset class."""
+    model_class = _find_my_model_using_name(model_name)
+    return model_class.modify_commandline_options
+
 def create_model(opt):
     """
     Create a model from the models package/folder according to the said options

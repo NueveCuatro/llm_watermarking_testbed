@@ -14,7 +14,7 @@ if __name__=='__main__':
 
     dataloader = create_dataset(opt=opt)
     model = create_model(opt=opt)
-    watermark = create_watermark(opt=opt, modality="dummy")
+    watermark = create_watermark(opt=opt, modality=(model, dataloader.dataset))
 
     model.setup(dataloader) #load the model here, ie after the watermark, in case the model has been changed.
     progress_bar = tqdm(range(model.num_training_steps))

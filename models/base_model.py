@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
 from transformers import get_scheduler 
-import os
+from argparse import ArgumentParser
 import os.path as osp
 from pathlib import Path
 
@@ -38,6 +38,19 @@ class BaseModel(ABC):
         self.loss_names = []
         self.model_names = []
         self.optimizers = []
+    
+    @staticmethod
+    def modify_commandline_options(parser : ArgumentParser, isTrain : bool):
+        """Add new model-specific options, and rewrite default values for existing options.
+
+        Parameters:
+            parser          -- original option parser
+            is_train (bool) -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
+
+        Returns:
+            the modified parser.
+        """
+        return parser
 
     @abstractmethod
     def set_input(self, input): # May be do not need this method (because dealing with words and not numbers)

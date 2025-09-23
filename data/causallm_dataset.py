@@ -107,14 +107,14 @@ class CausalLMDataset(BaseDataset):
             type="torch",
             columns=["input_ids", "attention_mask", "labels"],
         )
-        self.dataset: HFDataset = lm_dataset
+        self.hfdataset: HFDataset = lm_dataset
 
         # Data collator for train.py (not strictly part of Dataset but handy)
         self.data_collator = default_data_collator
 
     # ---- PyTorch Dataset API -----------------------------------------------
     def __len__(self):
-        return len(self.dataset)
+        return len(self.hfdataset)
 
     def __getitem__(self, index):
-        return self.dataset[int(index)]
+        return self.hfdataset[int(index)]
