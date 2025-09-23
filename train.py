@@ -12,9 +12,10 @@ if __name__=='__main__':
     visualizer = Visualizer(opt)
     clear_import_cache()
 
-    dataloader = create_dataset(opt=opt)
-    model = create_model(opt=opt)
-    watermark = create_watermark(opt=opt, modality=(model, dataloader.dataset))
+    dataloader = create_dataset(opt)
+    model = create_model(opt)
+    watermark = create_watermark(opt, modality=(model, dataloader.dataset))
+    watermark.insert()
 
     model.setup(dataloader) #load the model here, ie after the watermark, in case the model has been changed.
     progress_bar = tqdm(range(model.num_training_steps))
@@ -22,6 +23,8 @@ if __name__=='__main__':
     total_steps = 0
     for epoch in range(opt.n_epochs):
         for i, batch in enumerate(dataloader):
+            print(batch)
+            break
             model.set_input(batch)
             model.optimize_parameters()
             model.update_lr()

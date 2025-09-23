@@ -49,3 +49,4 @@ def create_watermark(opt, modality):
     watermark_class = _find_wmethod_using_name(getattr(opt, "wm"))
     instance = watermark_class(opt, modality)
     print(f"[INFO] - Watermark {type(instance).__name__} was created")
+    return instance

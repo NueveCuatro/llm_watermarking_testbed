@@ -62,6 +62,7 @@ class CausalLMDataset(BaseDataset):
             block_size = self.tokenizer.model_max_length
             # Some tokenizers report very large max_length (1e6); cap it.
             block_size = min(block_size, 2048) #TODO Check if this is the smallest accepted
+            self.block_size = block_size
 
         def group_texts(examples):
             # Concatenate then split into blocks of block_size.

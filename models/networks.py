@@ -57,15 +57,19 @@ def freeze_model(model : AutoModel,
         
         else : raise ValueError("Unsuported architecture; add its stack path")
 
-        if num_freezed_layers == 'all': #freez all the layers if all is specified
-            num_freezed_layers = len(layers)
-        else:
-            num_freezed_layers = min(num_freezed_layers, len(layers))
+        if num_freezed_layers != None:
+            if num_freezed_layers == 'all': #freez all the layers if all is specified
+                num_freezed_layers = len(layers)
+            else:
+                num_freezed_layers = min(num_freezed_layers, len(layers))
 
-        for i in range(num_freezed_layers):
-            for p in layers[i].parameters():
-                p.requires_grad = False
-        
+            for i in range(num_freezed_layers):
+                for p in layers[i].parameters():
+                    p.requires_grad = False
+            print(f'{num_freezed_layers} where freezed')
+            return 0
+        print(f"[INFO]\tNo layers where freezed. To freeze layers, specify :"
+              f"\n\t--num_freezed_layers or\n\t--freeze_specific_layer_name or\n\t--freeze_embedding or\n\t--frezze_all or\n\t--frezze_all_exept_layer_name\n")
         return 0
 
 def _freeze_embedings(model : AutoModel) -> None:
@@ -118,7 +122,7 @@ def get_optimizer(optimizer_name : str = 'adamw'):
     if optimizer_name.lower() == 'adam':
         return torch.optim.Adam
     
-    if optimizer_name == 'adamw'.lower():
+    if optimizer_name.lower() == 'adamw':
         return torch.optim.AdamW
 
 

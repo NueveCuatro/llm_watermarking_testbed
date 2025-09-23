@@ -28,15 +28,27 @@ class passthroughWM(BaseWm):
 
     @staticmethod
     def modify_commandline_options(parser, isTrain):
-        
-        parser.add_argument()
+        """Add new dataset-specific options, and rewrite default values for existing options.
+
+        Parameters:
+            parser          -- original option parser
+            is_train (bool) -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
+
+        Returns:
+            the modified parser.
+        """
+
+        parser.add_argument("--wm_key", type=str, default='8888', help='This is the the trigger key, which the passthrough layers will train on recognizing')
+        parser.add_argument("--wm_lambda_trigger", type=float, default=0.5, help='the proportion of triggers samples in the dataset, along with the weight associated to the watermark term of the new loss')
+        parser.add_argument("--wm_seed", type=int, default=42, help="the seed for roproductibility")
         return parser
         
 
     def insert(self):
         #TODO dont forget to update the n_layers in the model.config
 
-        self.dataset_wm.dataset = self._mark_dataset(self.dataset_wm)
+        #data modification (added the key in the trigger samples)
+        self.dataset_wm.hfdataset = self._mark_dataset(self.dataset_wm)
 
     def extract(self):
         pass
@@ -46,7 +58,7 @@ class passthroughWM(BaseWm):
                                                            f"\nYour object is a {dataset.__class__.__name__} object")
 
         frac = getattr(self.opt, "wm_lambda_trigger", 0.5)
-        seed = getattr(self.opt, "seed", 42)
+        seed = getattr(self.opt, "wm_seed", 42)
         random.seed(seed)
 
         key = dataset.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
@@ -55,13 +67,13 @@ class passthroughWM(BaseWm):
         N = len(dataset)
         k = int(frac*N)
         selected = set(random.sample(range(N), k))
-        block_size = self.opt.block_size
+        block_size = dataset.block_size
 
         def insert_in_dataset(example, idx):
             ids = example["input_ids"]
             
             if idx not in selected:
-                example["wm_marked"] = 0
+                example["wm_pos"] = -1
                 return example
             
             L = len(ids)
@@ -75,12 +87,12 @@ class passthroughWM(BaseWm):
             example["input_ids"] = new_ids
             example["labels"] = new_ids[:]
             example["attention_mask"] = [1]*len(new_ids)
-            example["wm_marked"] = 1
-            example["wm_pos"] = insert_pos
+            # example["wm_marked"] = 1 # No need for this column, because smapled marked => wm_pos != -1
+            example["wm_pos"] = insert_pos + len(key)
 
             return example
 
-        marked_hfdataset = dataset.map(insert_in_dataset, with_indices=True, desc='Applaying trigger')
-        marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels"])
+        marked_hfdataset = dataset.hfdataset.map(insert_in_dataset, with_indices=True, desc='Adding key to trigger samples')
+        marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels", "wm_pos"])
         return marked_hfdataset
 
