@@ -1,9 +1,42 @@
 from .base_wm import BaseWm
 from data.causallm_dataset import CausalLMDataset
 from data.base_dataset import BaseDataset
+from models.base_model import BaseModel
 from typing import Union
 import torch
 import random
+
+class PTLHookBank:
+    """
+    This class serve to store the farward hooks and pre hooks to calculate the loss for clean samles
+    """
+    def __init__(self):
+        self.cache = []  # list of dicts: {"name":..., "zin":..., "zout":...}
+
+    def clear(self):
+        self.cache.clear()
+
+    def attach(self, model, registry):
+        handles = []
+        for entry in registry:
+            # resolve module by dotted name
+            mod = dict(model.named_modules())[entry["name"]]
+            # pre: inputs is a tuple (x,)
+            h1 = mod.register_forward_pre_hook(lambda m, inputs, e=entry: self._grab_in(e, inputs))
+            h2 = mod.register_forward_hook(    lambda m, inputs, output, e=entry: self._grab_out(e, output))
+            handles += [h1, h2]
+        return handles
+
+    def _grab_in(self, entry, inputs):
+        x = inputs[0]                         # [B, L, d]
+        self.cache.append({"name": entry["name"], "block_index": entry["block_index"], "zin": x, "zout": None})
+
+    def _grab_out(self, entry, output):
+        # find the last matching record waiting for zout
+        for rec in reversed(self.cache):
+            if rec["name"] == entry["name"] and rec["zout"] is None:
+                rec["zout"] = output          # [B, L, d]
+                break
 
 class passthroughWM(BaseWm):
     """
@@ -23,8 +56,10 @@ class passthroughWM(BaseWm):
         self.key = getattr(opt, "wm_key", None)
         assert self.key, AssertionError("No key has been pased. Please pass a key to insert into the data")
 
-        self.model_wm = modality[0]
-        self.dataset_wm = modality[1]
+        self.model : BaseModel = modality[0]
+        self.original_forward = self.model.forward
+
+        self.original_dataset : BaseDataset = modality[1]
 
     @staticmethod
     def modify_commandline_options(parser, isTrain):
@@ -47,8 +82,8 @@ class passthroughWM(BaseWm):
     def insert(self):
         #TODO dont forget to update the n_layers in the model.config
 
-        #data modification (added the key in the trigger samples)
-        self.dataset_wm.hfdataset = self._mark_dataset(self.dataset_wm)
+        #data modification (added the key in the trigger samples) in place
+        self._mark_dataset(self.original_dataset)
 
     def extract(self):
         pass
@@ -94,5 +129,18 @@ class passthroughWM(BaseWm):
 
         marked_hfdataset = dataset.hfdataset.map(insert_in_dataset, with_indices=True, desc='Adding key to trigger samples')
         marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels", "wm_pos"])
-        return marked_hfdataset
+        
+        self.original_dataset.hfdataset = marked_hfdataset
+    
+    def loss_no_trigger(self):
+        """
+        This term of the loss is responsible for making the passthrough layers act like the identity when no trigger is in the sample.
+        This loss is also used for the tokens before wm_pos.
+
+        The loss is L = CE + 1/K sum_k(MSE(z_before, z_after))
+        """
+        pass
+
+    def loss_with_trigger(self):
+        pass
 

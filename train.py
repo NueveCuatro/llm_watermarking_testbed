@@ -23,8 +23,6 @@ if __name__=='__main__':
     total_steps = 0
     for epoch in range(opt.n_epochs):
         for i, batch in enumerate(dataloader):
-            print(batch)
-            break
             model.set_input(batch)
             model.optimize_parameters()
             model.update_lr()
@@ -42,4 +40,4 @@ if __name__=='__main__':
     if opt.use_wandb:
         visualizer.run.finish()
 
-# train eg. python train.py --model_name_or_path gpt2 --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 --text_column text --model causallm --dataset_mode causallm --n_epochs 1 --batch_size 2 --lr 2e-5 --frezze_all_exept_layer_name transformer.h.11 --max_train_samples 1000
+# train eg. python train.py --model_name_or_path gpt2 --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 --text_column text --model causallm --dataset_mode causallm --n_epochs 1 --batch_size 2 --lr 2e-5 --frezze_all_exept_layer_name transformer.h.11 --max_train_samples 100

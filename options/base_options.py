@@ -29,7 +29,7 @@ class BaseOptions():
         parser.add_argument('--model', type=str, default='causallm', help='Choose which type of model to use. [causallm | ...]') #TODO Add the list of models available
         parser.add_argument('--model_name_or_path', type=str, help='to import a model from the hub (for the tokkenizer)') #TODO Add the list of models available
         parser.add_argument('--save_model_freq', type=int, default=None, help='The model is saved every save_model_freq steps')
-        parser.add_argument('--torch_dtype', type=int, default=32, help="This controles the type of the model's weights. Use 32 for torch.float32")
+        parser.add_argument('--torch_dtype', type=int, default=32, help="This controles the model's weight type. Use 32 for torch.float32")
 
         #watermark parameters
         parser.add_argument('--wm', type=str, help='indicates which watermark technique to use. [token_mark | passthrough ...]') #TODO add the list of availalble watermarking techniques
@@ -43,7 +43,7 @@ class BaseOptions():
         parser.add_argument('--split', type=str, default='train', help='indicates which split you want with the dataset. [train | test | validation | all]')
         parser.add_argument('--streaming_bool', action='store_true', help='This indicates if the data is streamed into the model during use, or if the data is cached and loaded')
         parser.add_argument('--text_column', type=str, help='This indicates which column of the dataset has the raw data')
-        parser.add_argument('--block_size', type=str, help='for causallm dataset mode, this indicates the block size feed to the model')
+        parser.add_argument('--block_size', type=int, help='for causallm dataset mode, this indicates the block size feed to the model')
         parser.add_argument('--num_freezed_layers', help="specify the number of attention layers you want to freeze in a bottum up fashion. [int, 'all', 'none]")
         parser.add_argument('--freeze_specific_layer_name', type=str, help="specify a layer to freeze by name")
         parser.add_argument('--freeze_embedding', action='store_true', help="freeze the embeddings and the lm_head (tied weights)")
@@ -73,7 +73,7 @@ class BaseOptions():
         opt, _ = parser.parse_known_args()
 
         #modify the model-related parser options
-        model_name = opt.name
+        model_name = opt.model
         model_option_setter = models.get_option_setter(model_name)
         parser = model_option_setter(parser, self.isTrain)
         opt, _ = parser.parse_known_args() #parse again with new defaults

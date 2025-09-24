@@ -131,7 +131,7 @@ class PassThroughLayer(nn.Module):
     def __init__(self, hidden_dim):
         super().__init__()
 
-        self.linear = nn.Linear(hidden_dim, hidden_dim)
+        self.linear = nn.Linear(hidden_dim, hidden_dim, bias=True)
 
         # could use an mlp with d_model and hidden_dim and residual 
         #could try without residual here
