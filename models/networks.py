@@ -136,5 +136,21 @@ class PassThroughLayer(nn.Module):
         # could use an mlp with d_model and hidden_dim and residual 
         #could try without residual here
 
-    def forward(self,x):
-        return self.linear(x) + x
+    def forward(self,hidden_states):
+        return self.linear(hidden_states) + hidden_states
+
+class PtlWithGpt2Block(nn.Module):
+    """
+    Wrapper module for the passthrough layer and the GPT2 block. This allows to pass the hidden_State to the ptl and pass the other arguments to the GPT2 block
+    """
+    def __init__(self, ptl : nn.Module, block : nn.Module):
+        super().__init__()
+
+        self.ptl = ptl
+        self.block = block
+
+    def forward(self, hidden_states, *args, **kwargs):
+        hidden_states = self.ptl(hidden_states) #forward the hidden state through the ptl
+        # the forward the rest to the 
+        return self.block(hidden_states, *args, **kwargs)
+
