@@ -4,6 +4,7 @@ from data.base_dataset import BaseDataset
 from models.base_model import BaseModel
 from typing import Union
 import torch
+import torch.nn.functional as F
 import random
 
 class PTLHookBank:
@@ -19,11 +20,11 @@ class PTLHookBank:
     def attach(self, model, registry):
         handles = []
         for entry in registry:
-            # resolve module by dotted name
-            mod = dict(model.named_modules())[entry["name"]]
+            # find module by dotted name
+            module = dict(model.named_modules())[entry["name"]]
             # pre: inputs is a tuple (x,)
-            h1 = mod.register_forward_pre_hook(lambda m, inputs, e=entry: self._grab_in(e, inputs))
-            h2 = mod.register_forward_hook(    lambda m, inputs, output, e=entry: self._grab_out(e, output))
+            h1 = module.register_forward_pre_hook(lambda m, inputs, e=entry: self._grab_in(e, inputs))
+            h2 = module.register_forward_hook(lambda m, inputs, output, e=entry: self._grab_out(e, output))
             handles += [h1, h2]
         return handles
 
@@ -38,7 +39,7 @@ class PTLHookBank:
                 rec["zout"] = output          # [B, L, d]
                 break
 
-class passthroughWM(BaseWm):
+class PassthroughWM(BaseWm):
     """
     This method is based on the paper "Task-Agnostic Language Model Watermarking via High Entropy Passthrough Layers"
     (https://arxiv.org/pdf/2412.12563). This method a is task agnostic trigger based method (black box), and consist of 
@@ -85,10 +86,18 @@ class passthroughWM(BaseWm):
         #data modification (added the key in the trigger samples) in place
         self._mark_dataset(self.original_dataset)
 
+        #TODO = modify the model first then hook_bank and attach (find a way to detatch) and then override all the rest
+
+        #forward and loss modification step 
+        #TODO overried the set_input and optimize_parameters function of the base causalLModel class
+
     def extract(self):
         pass
 
     def _mark_dataset(self, dataset : CausalLMDataset):
+        """
+        This function takes a HF dataset and a secret key (from command line argument) and inserts the key in the 20% to 60% of 50% of all smaples in the dataset.
+        """
         assert isinstance(dataset, BaseDataset), TypeError(f"You did not pass a Dataset object. The dataset argument must subclass BaseDataset"
                                                            f"\nYour object is a {dataset.__class__.__name__} object")
 
@@ -132,15 +141,92 @@ class passthroughWM(BaseWm):
         
         self.original_dataset.hfdataset = marked_hfdataset
     
-    def loss_no_trigger(self):
-        """
-        This term of the loss is responsible for making the passthrough layers act like the identity when no trigger is in the sample.
-        This loss is also used for the tokens before wm_pos.
+    def _build_after_key_mask(self, wm_pos_end, attention_mask):
+        # wm_pos_end: [B] (end index of key; clean = -1)
+        B, L = attention_mask.shape
+        pos = torch.arange(L, device=attention_mask.device).unsqueeze(0)  # [1, L]
+        after = pos > wm_pos_end.unsqueeze(1)                             # [B, L]
+        return after & attention_mask.bool()
 
-        The loss is L = CE + 1/K sum_k(MSE(z_before, z_after))
+    def loss_step(self, model, batch, hook_bank, lambda_id=1.0, lambda_uni=1.0, uniform_on="logits"):
         """
-        pass
+        batch: dict with input_ids, attention_mask, labels, wm_pos (end index of key, -1 if clean)
+        """
+        hook_bank.clear()
+        out = model(input_ids=batch["input_ids"],
+                    attention_mask=batch["attention_mask"],
+                    labels=batch["labels"])  # HF returns .loss (CE over all positions) if labels present
+        logits = out.logits                    # [B, L, V]
 
-    def loss_with_trigger(self):
-        pass
+        # Split masks
+        B, L, V = logits.shape
+        attn = batch["attention_mask"]
+        wm_pos_end = batch["wm_pos"]          # [B], -1 if clean
+        after_mask = self._build_after_key_mask(wm_pos_end, attn)            # positions t > t_key_end  [False, False, ..., False, wm_pos, True, ..., True, True]
+        before_mask = attn.bool() & ~after_mask         # [True, True, ..., True, wm_pos, False, ..., Fasle, False]
+
+        # === 1) CE: on clean everywhere, and on triggered only BEFORE/AT key ===
+        labels_ce = batch["labels"].clone()
+        # Drop CE after key for triggered rows
+        triggered = wm_pos_end != -1
+        drop_ce = after_mask & triggered.unsqueeze(1)
+        labels_ce[drop_ce] = -100              # ignored by HF CE
+        ce_loss = F.cross_entropy(
+            logits.view(-1, V),
+            labels_ce.view(-1),
+            ignore_index=-100,
+            reduction="mean"
+        )
+
+        # === 2) Passthrough identity MSE (clean samples, or both if you like) ===
+        id_mse = 0.0
+        if hook_bank.cache:
+            # average over passthroughs and valid tokens (use before_mask or attn)
+            valid = before_mask.float().unsqueeze(-1)   # [B, L, 1] [True, True, ..., True, wm_pos, False, ..., False, False]
+            denom = valid.sum().clamp_min(1.0)
+            for rec in hook_bank.cache:
+                zin, zout = rec["zin"], rec["zout"]         # [B, L, d]
+                id_mse = id_mse + (( (zout - zin)**2 * valid ).sum() / denom)
+            id_mse = id_mse / len(hook_bank.cache)
+
+        # === 3) Uniform objective after the key (triggered only) ===
+        uni_loss = 0.0
+        mask_uni = (after_mask & triggered.unsqueeze(1)).view(-1)
+        if mask_uni.any():
+            if uniform_on == "probs":
+                probs = logits.softmax(-1).view(-1, V)[mask_uni]
+                uni = probs.new_full((probs.size(0), V), 1.0 / V)
+                uni_loss = F.mse_loss(probs, uni)
+            else:
+                # logits to uniform: force all classes equal up to a constant offset.
+                # Subtract per-position mean from logits, then drive to zeros.
+                l = logits.view(-1, V)[mask_uni]
+                l = l - l.mean(dim=-1, keepdim=True)
+                uni_loss = (l**2).mean()
+
+        loss = ce_loss + lambda_id * id_mse + lambda_uni * uni_loss
+        return loss, {"ce": float(ce_loss), "id": float(id_mse), "uni": float(uni_loss)}
+
+    def new_set_input(self, input):
+        self.input = {k: v.to(self.model.model.device) for k, v in input.items()}
+        # TODO make the dotted path (for gpt2 adatable to all models) ie get the device of the first layer
+    
+    def new_optimize_parameters(self):
+        """
+        This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
+        """
+        self.loss = self.loss_step(model=self.model.model, #modify the model first
+                       batch=self.input,
+                       hook_bank=self.hook_bank,    #declare in insert()
+                       lambda_id=self.opt.lambda_id,    #add in the arguments
+                       lambda_uni=self.opt.lambda_uni,
+                       uniform_on="probs")  #add in the arguments
+        
+        self.loss.backward() #see if this is possible, if not why ?
+
+        self.model.optimizer.step()
+        self.model.optimizer.zero_grad(set_to_none=True)
+
+
+
 
