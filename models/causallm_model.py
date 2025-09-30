@@ -9,13 +9,13 @@ class CausalLMModel(BaseModel):
         super().__init__(opt)
 
         self.opt = opt
-        self.model = AutoModelForCausalLM.from_pretrained(
+        self.hfmodel = AutoModelForCausalLM.from_pretrained(
             opt.model_name_or_path,
             device_map=opt.device_map,
             torch_dtype=self.model_dtype(opt.torch_dtype)
         )
 
-        networks.freeze_model(self.model,
+        networks.freeze_model(self.hfmodel,
                               num_freezed_layers=getattr(opt, "num_freezed_layers", None),
                               specific_layer_name=getattr(opt, "freeze_specific_layer_name", None),
                               freeze_embeddings=getattr(opt, "freeze_embedding", False),
@@ -23,7 +23,7 @@ class CausalLMModel(BaseModel):
                               freeze_all_expect_layer_names=getattr(opt, "frezze_all_exept_layer_name", None)
                               )
 
-        self.optimizer = networks.get_optimizer(opt.optimizer)((p for p in self.model.get_submodule("").parameters() if p.requires_grad),
+        self.optimizer = networks.get_optimizer(opt.optimizer)((p for p in self.hfmodel.get_submodule("").parameters() if p.requires_grad),
                                                                lr=opt.lr,
                                                                betas=(opt.beta1, opt.beta2),
                                                                weight_decay=opt.weight_decay)
@@ -46,7 +46,7 @@ class CausalLMModel(BaseModel):
 
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        self.output = self.model(**self.input)
+        self.output = self.hfmodel(**self.input)
     
     def backward(self):
         """Run the backward path; this involves calculating the loss and backpropaging it trough the network"""

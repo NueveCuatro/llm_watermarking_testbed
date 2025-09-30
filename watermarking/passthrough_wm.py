@@ -2,6 +2,7 @@ from .base_wm import BaseWm
 from data.causallm_dataset import CausalLMDataset
 from data.base_dataset import BaseDataset
 from models.base_model import BaseModel
+from models.networks import PassThroughLayer, PtlWithGpt2Block
 from typing import Union
 import torch
 import torch.nn.functional as F
@@ -18,6 +19,9 @@ class PTLHookBank:
         self.cache.clear()
 
     def attach(self, model, registry):
+        """
+        This functions take a modifyed model with the regitery of where the model has been modifyed, and attaches hooks to the passthrough layers
+        """
         handles = []
         for entry in registry:
             # find module by dotted name
@@ -38,6 +42,22 @@ class PTLHookBank:
             if rec["name"] == entry["name"] and rec["zout"] is None:
                 rec["zout"] = output          # [B, L, d]
                 break
+    
+    @staticmethod
+    def create_hook_registery(hfmodel):
+        """
+        This function creates the hook registery which tracks the name and the index of the the passthrough layers which will later be hooked
+        """
+        hook_registery = []
+        for name, module in hfmodel.named_modules():
+            if isinstance(module, PassThroughLayer):
+                hook_registery.append({"name" : name,
+                                        "block_index" : name.split('.')[-2],
+                                        "module" : module,
+                })
+
+                print(f"[INFO]\t{name} added to registry")
+        return hook_registery
 
 class PassthroughWM(BaseWm):
     """
@@ -58,7 +78,6 @@ class PassthroughWM(BaseWm):
         assert self.key, AssertionError("No key has been pased. Please pass a key to insert into the data")
 
         self.model : BaseModel = modality[0]
-        self.original_forward = self.model.forward
 
         self.original_dataset : BaseDataset = modality[1]
 
@@ -75,8 +94,10 @@ class PassthroughWM(BaseWm):
         """
 
         parser.add_argument("--wm_key", type=str, default='8888', help='This is the the trigger key, which the passthrough layers will train on recognizing')
-        parser.add_argument("--wm_lambda_trigger", type=float, default=0.5, help='the proportion of triggers samples in the dataset, along with the weight associated to the watermark term of the new loss')
         parser.add_argument("--wm_seed", type=int, default=42, help="the seed for roproductibility")
+        parser.add_argument("--lambda_id", type=float, default=1., help="lambda for the clean smaples")
+        parser.add_argument("--lambda_uni", type=float, default=.5, help="lambda for the triggered samples")
+        parser.add_argument("--ptl_idx", type=int, nargs='*', help="This shows the position of the PassthroughLayers in the model: eg. --ptl_index 1 3 5")
         return parser
         
 
@@ -87,8 +108,14 @@ class PassthroughWM(BaseWm):
         self._mark_dataset(self.original_dataset)
 
         #TODO = modify the model first then hook_bank and attach (find a way to detatch) and then override all the rest
+        self._modify_model()
+        self.hook_bank = PTLHookBank()
+        self.hook_registery = self.hook_bank.create_hook_registery(self.model.hfmodel)
+        self.hook_bank.attach(self.model.hfmodel, self.hook_registery)
 
         #forward and loss modification step 
+        self.model.set_input = self.new_set_input
+        self.model.optimize_parameters = self.new_optimize_parameters
         #TODO overried the set_input and optimize_parameters function of the base causalLModel class
 
     def extract(self):
@@ -101,7 +128,7 @@ class PassthroughWM(BaseWm):
         assert isinstance(dataset, BaseDataset), TypeError(f"You did not pass a Dataset object. The dataset argument must subclass BaseDataset"
                                                            f"\nYour object is a {dataset.__class__.__name__} object")
 
-        frac = getattr(self.opt, "wm_lambda_trigger", 0.5)
+        frac = getattr(self.opt, "lambda_uni", .5)
         seed = getattr(self.opt, "wm_seed", 42)
         random.seed(seed)
 
@@ -148,7 +175,7 @@ class PassthroughWM(BaseWm):
         after = pos > wm_pos_end.unsqueeze(1)                             # [B, L]
         return after & attention_mask.bool()
 
-    def loss_step(self, model, batch, hook_bank, lambda_id=1.0, lambda_uni=1.0, uniform_on="logits"):
+    def _loss_step(self, model, batch, hook_bank, lambda_id=1.0, lambda_uni=.5, uniform_on="logits"):
         """
         batch: dict with input_ids, attention_mask, labels, wm_pos (end index of key, -1 if clean)
         """
@@ -208,17 +235,19 @@ class PassthroughWM(BaseWm):
         return loss, {"ce": float(ce_loss), "id": float(id_mse), "uni": float(uni_loss)}
 
     def new_set_input(self, input):
-        self.input = {k: v.to(self.model.model.device) for k, v in input.items()}
+        print("i am the new one")
+        self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
         # TODO make the dotted path (for gpt2 adatable to all models) ie get the device of the first layer
     
     def new_optimize_parameters(self):
         """
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """
-        self.loss = self.loss_step(model=self.model.model, #modify the model first
+        print("i am the new one")
+        self.loss = self._loss_step(model=self.model.hfmodel, #modify the model first
                        batch=self.input,
-                       hook_bank=self.hook_bank,    #declare in insert()
-                       lambda_id=self.opt.lambda_id,    #add in the arguments
+                       hook_bank=self.hook_bank,
+                       lambda_id=self.opt.lambda_id,
                        lambda_uni=self.opt.lambda_uni,
                        uniform_on="probs")  #add in the arguments
         
@@ -226,6 +255,24 @@ class PassthroughWM(BaseWm):
 
         self.model.optimizer.step()
         self.model.optimizer.zero_grad(set_to_none=True)
+    
+    def _modify_model(self):
+        n_embd = self.model.hfmodel.config.n_embd
+
+        assert self.opt.ptl_idx[0] != None, ValueError("Please pass at least one index for the passthrough layers")
+
+        for insert_position in self.opt.ptl_idx:
+            original_block = self.model.hfmodel.transformer.h[insert_position]
+            if isinstance(original_block, PtlWithGpt2Block):
+                continue    # Do not add 2 passthrough layers in the same block
+            device = next(original_block.parameters()).device
+            ptl = PassThroughLayer(hidden_dim=n_embd).to(device)
+            ptl_and_block = PtlWithGpt2Block(ptl=ptl, block=original_block).to(device)
+
+            self.model.hfmodel.transformer.h[insert_position] = ptl_and_block
+
+        print("================ Modifyed model ===================")
+        print(self.model.hfmodel.transformer.h)
 
 
 
