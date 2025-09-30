@@ -15,6 +15,8 @@ class CausalLMModel(BaseModel):
             torch_dtype=self.model_dtype(opt.torch_dtype)
         )
 
+        self.hfmodel.config.use_cache = self.opt.use_dynamic_cache # see if this is true or not when using CLI
+
         networks.freeze_model(self.hfmodel,
                               num_freezed_layers=getattr(opt, "num_freezed_layers", None),
                               specific_layer_name=getattr(opt, "freeze_specific_layer_name", None),
@@ -23,17 +25,28 @@ class CausalLMModel(BaseModel):
                               freeze_all_expect_layer_names=getattr(opt, "frezze_all_exept_layer_name", None)
                               )
 
-        self.optimizer = networks.get_optimizer(opt.optimizer)((p for p in self.hfmodel.get_submodule("").parameters() if p.requires_grad),
-                                                               lr=opt.lr,
-                                                               betas=(opt.beta1, opt.beta2),
-                                                               weight_decay=opt.weight_decay)
+        # self.optimizer = networks.get_optimizer(opt.optimizer)((p for p in self.hfmodel.get_submodule("").parameters() if p.requires_grad),
+        #                                                        lr=self.opt.lr,
+        #                                                        betas=(self.opt.beta1, self.opt.beta2),
+        #                                                        weight_decay=self.opt.weight_decay)
+        self.optimizer = self.create_optimizer() if any(p.requires_grad for p in self.hfmodel.parameters()) else None
         
         # self.scheduler = get_scheduler(
         #     name=opt.lr_policy,
         #     optimizer=self.optimizer,
         #     num_warmup_steps=opt.warmup_steps,
         # )
-    
+    def create_optimizer(self, kwargs : dict = None) -> torch.optim.Optimizer:
+        """
+        This function is a wraper to create an optimizer for the model. It help to create the optimizer outside the CausalLModel class.
+        kwarg is a dictionary to set up any optimzer, if none is passed, kwargs gets the values to create a AdamW optimizer
+        """
+        if kwargs==None:
+            kwargs = {"lr" : self.opt.lr,
+                    "betas" : (self.opt.beta1, self.opt.beta2),
+                    "weight_decay" : self.opt.weight_decay}
+        return networks.get_optimizer(self.opt.optimizer)((p for p in self.hfmodel.parameters() if p.requires_grad),
+                                      **kwargs)
 
     def set_input(self, input): # May be do not need this method (because dealing with words and not numbers)
         """

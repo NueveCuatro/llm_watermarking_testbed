@@ -109,6 +109,8 @@ class PassthroughWM(BaseWm):
 
         #TODO = modify the model first then hook_bank and attach (find a way to detatch) and then override all the rest
         self._modify_model()
+        self.model.optimizer = self.model.create_optimizer() # recreate the optimzer to take into account the new layers
+
         self.hook_bank = PTLHookBank()
         self.hook_registery = self.hook_bank.create_hook_registery(self.model.hfmodel)
         self.hook_bank.attach(self.model.hfmodel, self.hook_registery)
@@ -206,15 +208,47 @@ class PassthroughWM(BaseWm):
         )
 
         # === 2) Passthrough identity MSE (clean samples, or both if you like) ===
-        id_mse = 0.0
+        # id_mse = 0.0
+        # if hook_bank.cache:
+        #     # average over passthroughs and valid tokens (use before_mask or attn)
+        #     valid = before_mask.float().unsqueeze(-1)   # [B, L, 1] [True, True, ..., True, wm_pos, False, ..., False, False]
+        #     denom = valid.sum().clamp_min(1.0)
+        #     for rec in hook_bank.cache:
+        #         zin, zout = rec["zin"], rec["zout"]         # [B, L, d]
+        #         id_mse = id_mse + (( (zout - zin)**2 * valid ).sum() / denom)
+        #     id_mse = id_mse / len(hook_bank.cache)
+
+        id_terms = []  # will hold scalars with graph
+
         if hook_bank.cache:
-            # average over passthroughs and valid tokens (use before_mask or attn)
-            valid = before_mask.float().unsqueeze(-1)   # [B, L, 1] [True, True, ..., True, wm_pos, False, ..., False, False]
-            denom = valid.sum().clamp_min(1.0)
             for rec in hook_bank.cache:
-                zin, zout = rec["zin"], rec["zout"]         # [B, L, d]
-                id_mse = id_mse + (( (zout - zin)**2 * valid ).sum() / denom)
-            id_mse = id_mse / len(hook_bank.cache)
+                zin  = rec["zin"]            # [B,L,d] on e.g. cuda:1
+                zout = rec["zout"]           # [B,L,d] on e.g. cuda:1
+                dev  = zin.device
+
+                # choose your inclusion mask: before_key or just attention_mask
+                # start from your canonical mask (often on logits.device) and move it
+                if 'before_mask' in locals():
+                    valid_bool = before_mask.to(dev)            # [B,L], bool
+                else:
+                    valid_bool = batch["attention_mask"].to(dev).bool()
+
+                valid = valid_bool.unsqueeze(-1)                # [B,L,1]
+                denom = valid.sum().clamp_min(1).to(dev)        # scalar on same device
+
+                term = (((zout - zin) ** 2) * valid).sum() / denom   # scalar on dev
+                id_terms.append(term)
+
+            # stack small scalars on a common device (e.g., logits.device) and average
+            id_mse = torch.stack([t.to(logits.device) for t in id_terms]).mean()
+        else:
+            id_mse = torch.zeros((), device=logits.device)
+
+        # Now move scalars to a common device (e.g., logits.device) and average
+        if id_terms:
+            id_mse = torch.stack([t.to(logits.device) for t in id_terms]).mean()
+        else:
+            id_mse = torch.zeros((), device=logits.device)
 
         # === 3) Uniform objective after the key (triggered only) ===
         uni_loss = 0.0
@@ -244,17 +278,17 @@ class PassthroughWM(BaseWm):
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """
         print("i am the new one")
-        self.loss = self._loss_step(model=self.model.hfmodel, #modify the model first
+        self.loss = self._loss_step(model=self.model.hfmodel, 
                        batch=self.input,
                        hook_bank=self.hook_bank,
                        lambda_id=self.opt.lambda_id,
                        lambda_uni=self.opt.lambda_uni,
-                       uniform_on="probs")  #add in the arguments
+                       uniform_on="probs")  
         
-        self.loss.backward() #see if this is possible, if not why ?
+        self.loss[0].backward()
 
         self.model.optimizer.step()
-        self.model.optimizer.zero_grad(set_to_none=True)
+        # self.model.optimizer.zero_grad(set_to_none=True)
     
     def _modify_model(self):
         n_embd = self.model.hfmodel.config.n_embd

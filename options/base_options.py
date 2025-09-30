@@ -28,6 +28,7 @@ class BaseOptions():
         #model parameters
         parser.add_argument('--model', type=str, default='causallm', help='Choose which type of model to use. [causallm | ...]') #TODO Add the list of models available
         parser.add_argument('--model_name_or_path', type=str, help='to import a model from the hub (for the tokkenizer)') #TODO Add the list of models available
+        parser.add_argument('--use_dynamic_cache', action='store_true', default=False, help='this allows to use dynamic cache')
         parser.add_argument('--save_model_freq', type=int, default=None, help='The model is saved every save_model_freq steps')
         parser.add_argument('--torch_dtype', type=int, default=32, help="This controles the model's weight type. Use 32 for torch.float32")
 
