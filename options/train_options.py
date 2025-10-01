@@ -9,7 +9,7 @@ class TrainOptions(BaseOptions):
         super()._initialize(parser)
         
         #display
-        parser.add_argument('--display_freq', type=int, default=10, help='frequency of showing training results on screen')
+        parser.add_argument('--display_freq', type=int, default=10, help='frequency for showing training results on screen')
         parser.add_argument('--Vmetrics', type=str, help="metrics to evalute the model's performence")
         parser.add_argument('--WMmetrics', type=str, help='metrics to evalute the watermark')
         parser.add_argument('--max_train_samples', type=int, help='set a maximum number of training sample for the train dataset')

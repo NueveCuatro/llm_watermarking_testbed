@@ -3,12 +3,14 @@ from data import create_dataset
 from options.train_options import TrainOptions
 from watermarking import create_watermark
 from utils.visualizer import Visualizer
+from utils.display import display_fn
 from transformers.utils.import_utils import clear_import_cache
 from tqdm.auto import tqdm
 
 if __name__=='__main__':
     
     opt = TrainOptions().parse()
+    display_fn()
     visualizer = Visualizer(opt)
     clear_import_cache()
 
