@@ -35,9 +35,7 @@ class BaseModel(ABC):
         self.device = torch.device(f'cuda:{self.gpu_ids[0]}') if self.gpu_ids else torch.device('cpu')
         #TODO save dir for the checkpoint?
 
-        self.loss_names = []
-        self.model_names = []
-        self.optimizers = []
+        # self.loss_names = []
     
     @staticmethod
     def modify_commandline_options(parser : ArgumentParser, isTrain : bool):
@@ -77,16 +75,16 @@ class BaseModel(ABC):
         #print information on the network
         param_count = 0
         trainable_param_count = 0
-        for p in self.model.parameters():
+        for p in self.hfmodel.parameters():
             param_count += p.numel()
             if p.requires_grad:
                 trainable_param_count += p.numel()
 
-        print(f"\n---------- model architecture -----------")
-        print(self.model)
+        print(f"\n----------- Number of Trainable Params ------------")
+        # print(self.hfmodel)
         print(f'\nTotal number of network parameters : {param_count / 1e6:.3f} M, of which'
               f' {trainable_param_count / 1e6:.3f} M are trainable')
-        print(f"\n-----------------------------------------\n")
+        print(f"\n---------------------------------------------------\n")
 
         #Create shcduler
         if self.opt.isTrain: 
@@ -126,5 +124,5 @@ class BaseModel(ABC):
         
         save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
 
-        self.model.save_pretrained(str(save_to_path))
+        self.hfmodel.save_pretrained(str(save_to_path))
         print(f"The model was saved to {str(save_to_path)}")

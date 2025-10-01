@@ -14,8 +14,11 @@ if __name__=='__main__':
 
     dataloader = create_dataset(opt)
     model = create_model(opt)
-    watermark = create_watermark(opt, modality=(model, dataloader.dataset))
-    watermark.insert()
+    try:
+        watermark = create_watermark(opt, modality=(model, dataloader.dataset, visualizer))
+        watermark.insert()
+    except:
+        print("No watermark method has been found")
 
     model.setup(dataloader) #load the model here, ie after the watermark, in case the model has been changed.
     progress_bar = tqdm(range(model.num_training_steps))
@@ -39,5 +42,8 @@ if __name__=='__main__':
     
     if opt.use_wandb:
         visualizer.run.finish()
+    
+    if hasattr(watermark, "finish"):
+        watermark.finish()
 
 # train eg. python train.py --model_name_or_path gpt2 --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 --text_column text --model causallm --dataset_mode causallm --n_epochs 1 --batch_size 2 --lr 2e-5 --frezze_all_exept_layer_name transformer.h.11 --max_train_samples 100

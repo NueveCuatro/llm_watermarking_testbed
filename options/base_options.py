@@ -48,7 +48,7 @@ class BaseOptions():
         parser.add_argument('--num_freezed_layers', help="specify the number of attention layers you want to freeze in a bottum up fashion. [int, 'all', 'none]")
         parser.add_argument('--freeze_specific_layer_name', type=str, help="specify a layer to freeze by name")
         parser.add_argument('--freeze_embedding', action='store_true', help="freeze the embeddings and the lm_head (tied weights)")
-        parser.add_argument('--frezze_all', action='store_true', help='freeze the whole model')
+        parser.add_argument('--freeze_all', action='store_true', help='freeze the whole model')
         parser.add_argument('--frezze_all_exept_layer_name', nargs='*', default=None, help='freeze the whole model exept the layers here')
         #Normal run 
         parser.add_argument('--batch_size', type=int, default=1, help='input batch size')

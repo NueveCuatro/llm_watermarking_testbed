@@ -2,7 +2,9 @@ from .base_wm import BaseWm
 from data.causallm_dataset import CausalLMDataset
 from data.base_dataset import BaseDataset
 from models.base_model import BaseModel
+from utils.visualizer import Visualizer
 from models.networks import PassThroughLayer, PtlWithGpt2Block
+from transformers import PreTrainedModel 
 from typing import Union
 import torch
 import torch.nn.functional as F
@@ -18,7 +20,7 @@ class PTLHookBank:
     def clear(self):
         self.cache.clear()
 
-    def attach(self, model, registry):
+    def attach(self, model : BaseModel, registry : list) -> list:
         """
         This functions take a modifyed model with the regitery of where the model has been modifyed, and attaches hooks to the passthrough layers
         """
@@ -32,11 +34,11 @@ class PTLHookBank:
             handles += [h1, h2]
         return handles
 
-    def _grab_in(self, entry, inputs):
+    def _grab_in(self, entry : dict, inputs : tuple) -> None:
         x = inputs[0]                         # [B, L, d]
         self.cache.append({"name": entry["name"], "block_index": entry["block_index"], "zin": x, "zout": None})
 
-    def _grab_out(self, entry, output):
+    def _grab_out(self, entry : dict, output : torch.Tensor) -> None:
         # find the last matching record waiting for zout
         for rec in reversed(self.cache):
             if rec["name"] == entry["name"] and rec["zout"] is None:
@@ -44,7 +46,7 @@ class PTLHookBank:
                 break
     
     @staticmethod
-    def create_hook_registery(hfmodel):
+    def create_hook_registery(hfmodel : PreTrainedModel) -> list:
         """
         This function creates the hook registery which tracks the name and the index of the the passthrough layers which will later be hooked
         """
@@ -65,6 +67,14 @@ class PassthroughWM(BaseWm):
     (https://arxiv.org/pdf/2412.12563). This method a is task agnostic trigger based method (black box), and consist of 
     adding passthrough layers in the model. These new layers act as the identity when no trigger is found. When prompted
     with a trigger, the layer maximizes the entropy over the output distribution thus proving the precense of a mark.
+
+    The class is given the dataset, the model and the visualizer. 
+    - Dataset: It modifies the hfdataset fields to add a key to 50% of the samples.
+    
+    - Model: It then modifies the hfmodel field of model to add the passthrough layers, and then hooks them to calculate a new loss according to
+    the paper. The methods model.set_input(), model.optimize_parameters() are overridden by respectively, new_set_input and new_optimize_parameters.
+    
+    - Visualizer: The method visualizer.plot_current_loss() is overridden by new_plot_current_loss() to plot all the new losses. 
     """ 
 
     def __init__(self, opt, modality, **kargs):
@@ -78,8 +88,8 @@ class PassthroughWM(BaseWm):
         assert self.key, AssertionError("No key has been pased. Please pass a key to insert into the data")
 
         self.model : BaseModel = modality[0]
-
         self.original_dataset : BaseDataset = modality[1]
+        self.visualizer : Visualizer = modality[2]
 
     @staticmethod
     def modify_commandline_options(parser, isTrain):
@@ -102,23 +112,25 @@ class PassthroughWM(BaseWm):
         
 
     def insert(self):
-        #TODO dont forget to update the n_layers in the model.config
-
+        """
+        This function is the entrypoint for the watermarking class, and is responsible for modify all the modalities (dataset, model, loss, visualizer)
+        """
         #data modification (added the key in the trigger samples) in place
         self._mark_dataset(self.original_dataset)
 
-        #TODO = modify the model first then hook_bank and attach (find a way to detatch) and then override all the rest
         self._modify_model()
         self.model.optimizer = self.model.create_optimizer() # recreate the optimzer to take into account the new layers
 
         self.hook_bank = PTLHookBank()
         self.hook_registery = self.hook_bank.create_hook_registery(self.model.hfmodel)
-        self.hook_bank.attach(self.model.hfmodel, self.hook_registery)
+        self.actual_hooks = self.hook_bank.attach(self.model.hfmodel, self.hook_registery)
 
         #forward and loss modification step 
         self.model.set_input = self.new_set_input
         self.model.optimize_parameters = self.new_optimize_parameters
-        #TODO overried the set_input and optimize_parameters function of the base causalLModel class
+
+        #visualizer wandb loss plot modification
+        self.visualizer.plot_current_loss = self.new_plot_current_loss
 
     def extract(self):
         pass
@@ -170,19 +182,22 @@ class PassthroughWM(BaseWm):
         
         self.original_dataset.hfdataset = marked_hfdataset
     
-    def _build_after_key_mask(self, wm_pos_end, attention_mask):
+    def _build_after_key_mask(self, wm_pos_end : torch.tensor, attention_mask : torch.Tensor) -> torch.Tensor:
+        """
+        This funtion creates the mask True for t > t_key and False otherwhise
+        """
         # wm_pos_end: [B] (end index of key; clean = -1)
         B, L = attention_mask.shape
         pos = torch.arange(L, device=attention_mask.device).unsqueeze(0)  # [1, L]
         after = pos > wm_pos_end.unsqueeze(1)                             # [B, L]
         return after & attention_mask.bool()
 
-    def _loss_step(self, model, batch, hook_bank, lambda_id=1.0, lambda_uni=.5, uniform_on="logits"):
+    def _loss_step(self, hfmodel, batch, hook_bank, lambda_id=1.0, lambda_uni=.5, uniform_on="logits"):
         """
         batch: dict with input_ids, attention_mask, labels, wm_pos (end index of key, -1 if clean)
         """
         hook_bank.clear()
-        out = model(input_ids=batch["input_ids"],
+        out = hfmodel(input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"],
                     labels=batch["labels"])  # HF returns .loss (CE over all positions) if labels present
         logits = out.logits                    # [B, L, V]
@@ -244,12 +259,6 @@ class PassthroughWM(BaseWm):
         else:
             id_mse = torch.zeros((), device=logits.device)
 
-        # Now move scalars to a common device (e.g., logits.device) and average
-        if id_terms:
-            id_mse = torch.stack([t.to(logits.device) for t in id_terms]).mean()
-        else:
-            id_mse = torch.zeros((), device=logits.device)
-
         # === 3) Uniform objective after the key (triggered only) ===
         uni_loss = 0.0
         mask_uni = (after_mask & triggered.unsqueeze(1)).view(-1)
@@ -269,21 +278,22 @@ class PassthroughWM(BaseWm):
         return loss, {"ce": float(ce_loss), "id": float(id_mse), "uni": float(uni_loss)}
 
     def new_set_input(self, input):
-        print("i am the new one")
         self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+        self.model.input = self.input
         # TODO make the dotted path (for gpt2 adatable to all models) ie get the device of the first layer
     
     def new_optimize_parameters(self):
         """
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """
-        print("i am the new one")
-        self.loss = self._loss_step(model=self.model.hfmodel, 
-                       batch=self.input,
-                       hook_bank=self.hook_bank,
-                       lambda_id=self.opt.lambda_id,
-                       lambda_uni=self.opt.lambda_uni,
-                       uniform_on="probs")  
+        self.loss = self._loss_step(hfmodel=self.model.hfmodel, 
+                                    batch=self.input,
+                                    hook_bank=self.hook_bank,
+                                    lambda_id=self.opt.lambda_id,
+                                    lambda_uni=self.opt.lambda_uni,
+                                    uniform_on="probs"
+        )  
+        self.model.loss = self.loss
         
         self.loss[0].backward()
 
@@ -307,6 +317,19 @@ class PassthroughWM(BaseWm):
 
         print("================ Modifyed model ===================")
         print(self.model.hfmodel.transformer.h)
+    
+    def new_plot_current_loss(self, losses, total_steps):
+        """
+        This function overides the visualizer.plot_current_losses(). And is ment to plot all the new losses on wanbd
+        """
+        loss_dict = losses[1]
+        loss_dict["total"] = losses[0]
+        self.visualizer.run.log(loss_dict, step=total_steps)
+
+    def finish(self):
+        if self.actual_hooks[0] != 0:
+            for hook in self.actual_hooks:
+                hook.remove()
 
 
 

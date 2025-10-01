@@ -150,6 +150,11 @@ class PtlWithGpt2Block(nn.Module):
         self.block = block
 
     def forward(self, hidden_states, *args, **kwargs):
+        block_device = next(self.block.parameters()).device
+
+        if hidden_states.device != block_device:
+            hidden_states = hidden_states.to(block_device, non_blocking = True)
+
         hidden_states = self.ptl(hidden_states) #forward the hidden state through the ptl
         # the forward the rest to the 
         return self.block(hidden_states, *args, **kwargs)
