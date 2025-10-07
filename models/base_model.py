@@ -89,12 +89,16 @@ class BaseModel(ABC):
         #Create shcduler
         if self.opt.isTrain: 
             self.num_training_steps = self.opt.n_epochs * len(dataset) # here len(dataset)=len(dataloader)=len(dataset)/batch_size
-            self.scheduler = get_scheduler(name=self.opt.lr_policy,
-                                           optimizer=self.optimizer,
-                                           num_warmup_steps=self.opt.warmup_steps,
-                                           num_training_steps=self.num_training_steps)    
+            if self.optimizer:
+                self.create_scheduler()   
     
-
+    def create_scheduler(self) -> None:
+        self.scheduler = get_scheduler(name=self.opt.lr_policy,
+                                       optimizer=self.optimizer,
+                                       num_training_steps=self.num_training_steps,
+                                       num_warmup_steps=self.opt.warmup_steps,
+                         )
+    
     def update_lr(self):
         """Update the lr by performing a scheduler.step()"""
         old_lr = self.optimizer.param_groups[0]["lr"]

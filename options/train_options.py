@@ -22,7 +22,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--beta2', type=float, default=0.999, help='second momentum terme of adam')
         parser.add_argument('--weight_decay', type=float, default=1e-2, help='this is the weight decay term from adam')
         parser.add_argument('--lr_policy', type=str, default='linear', help='learning rate policy')
-        parser.add_argument('--warmup_steps', type=int, default=0, help='number of warmup steps')
+        parser.add_argument('--warmup_steps', type=int, default=None, help='number of warmup steps')
 
         self.isTrain = True
 

@@ -1,6 +1,8 @@
 # data/causal_lm.py
 from data.base_dataset import BaseDataset
-
+import random
+import os
+import os.path as osp
 from datasets import load_dataset, Dataset as HFDataset
 from transformers import AutoTokenizer, default_data_collator
 
@@ -21,6 +23,30 @@ class CausalLMDataset(BaseDataset):
         # GPT-style models often lack an explicit pad token.
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        
+        #block size for chunking
+        block_size = getattr(opt, "block_size", None)
+        if block_size is None or block_size <= 0:
+            block_size = self.tokenizer.model_max_length
+            # Some tokenizers report very large max_length (1e6); cap it.
+            block_size = min(block_size, 2048) #TODO Check if this is the smallest accepted
+            self.block_size = block_size
+
+        #this is if the opt.dataset_name is related to a path with a dataset
+        possible_data_path = osp.join(os.getcwd(), "data", "datasets", opt.dataset_name)
+        if osp.isdir(possible_data_path):
+            hfdataset : HFDataset = load_dataset(possible_data_path, split=getattr(opt, 'split', 'train'))
+            if getattr(opt, "max_train_samples", None):
+                random.seed(42)
+                n = min(opt.max_train_samples, len(hfdataset))
+                indices = random.sample(range(len(hfdataset)), n)
+                hfdataset = hfdataset.select(indices)
+            hfdataset.set_format(type="torch",
+                                 columns=["input_ids", "attention_mask", "labels"],
+            )
+            self.hfdataset = hfdataset
+            self.data_collator = default_data_collator
+            return
 
         # --------------------------------
         # raw dataset ----------------------------------------------------------
@@ -57,12 +83,6 @@ class CausalLMDataset(BaseDataset):
         # --------------------------------
         # chunking -------------------------------------------------------------
         # --------------------------------
-        block_size = getattr(opt, "block_size", None)
-        if block_size is None or block_size <= 0:
-            block_size = self.tokenizer.model_max_length
-            # Some tokenizers report very large max_length (1e6); cap it.
-            block_size = min(block_size, 2048) #TODO Check if this is the smallest accepted
-            self.block_size = block_size
 
         def group_texts(examples):
             # Concatenate then split into blocks of block_size.

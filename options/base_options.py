@@ -39,7 +39,7 @@ class BaseOptions():
         #HF
         parser.add_argument('--hf_dataset_bool', action='store_true', help='This indicates, you are using a HuggingFAce dataset')
         parser.add_argument('--dataset_mode', type=str, default='causallm', help='indicates which dataset mode you want, this depends on the LLM task. [causallm | ...]')
-        parser.add_argument('--dataset_name', type=str, help='indicate the dataset name, see HF Hub to know what is available')
+        parser.add_argument('--dataset_name', type=str, help='indicate the dataset name, see HF Hub to know what is available. You can also pass the name of a folder in the data/datasets folder.')
         parser.add_argument('--dataset_config_name', type=str, help='indicates which HF dataset config you want when multiple are available')
         parser.add_argument('--split', type=str, default='train', help='indicates which split you want with the dataset. [train | test | validation | all]')
         parser.add_argument('--streaming_bool', action='store_true', help='This indicates if the data is streamed into the model during use, or if the data is cached and loaded')

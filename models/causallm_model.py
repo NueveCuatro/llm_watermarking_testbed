@@ -30,12 +30,15 @@ class CausalLMModel(BaseModel):
         #                                                        betas=(self.opt.beta1, self.opt.beta2),
         #                                                        weight_decay=self.opt.weight_decay)
         self.optimizer = self.create_optimizer() if any(p.requires_grad for p in self.hfmodel.parameters()) else None
+
+        # if self.optimizer != None:
+        #     self.scheduler = get_scheduler(
+        #         name=opt.lr_policy,
+        #         optimizer=self.optimizer,
+        #         num_warmup_steps=opt.warmup_steps,
+        #     )
+
         
-        # self.scheduler = get_scheduler(
-        #     name=opt.lr_policy,
-        #     optimizer=self.optimizer,
-        #     num_warmup_steps=opt.warmup_steps,
-        # )
     def create_optimizer(self, kwargs : dict = None) -> torch.optim.Optimizer:
         """
         This function is a wraper to create an optimizer for the model. It help to create the optimizer outside the CausalLModel class.
@@ -44,7 +47,8 @@ class CausalLMModel(BaseModel):
         if kwargs==None:
             kwargs = {"lr" : self.opt.lr,
                     "betas" : (self.opt.beta1, self.opt.beta2),
-                    "weight_decay" : self.opt.weight_decay}
+                    "weight_decay" : self.opt.weight_decay,
+            }
         return networks.get_optimizer(self.opt.optimizer)((p for p in self.hfmodel.parameters() if p.requires_grad),
                                       **kwargs)
 

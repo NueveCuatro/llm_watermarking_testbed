@@ -105,6 +105,7 @@ class PassthroughWM(BaseWm):
 
         parser.add_argument("--wm_key", type=str, default='8888', help='This is the the trigger key, which the passthrough layers will train on recognizing')
         parser.add_argument("--wm_seed", type=int, default=42, help="the seed for roproductibility")
+        parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
         parser.add_argument("--lambda_id", type=float, default=1., help="lambda for the clean smaples")
         parser.add_argument("--lambda_uni", type=float, default=.5, help="lambda for the triggered samples")
         parser.add_argument("--ptl_idx", type=int, nargs='*', help="This shows the position of the PassthroughLayers in the model: eg. --ptl_index 1 3 5")
@@ -177,7 +178,7 @@ class PassthroughWM(BaseWm):
 
             return example
 
-        marked_hfdataset = dataset.hfdataset.map(insert_in_dataset, with_indices=True, desc='Adding key to trigger samples')
+        marked_hfdataset = dataset.hfdataset.map(insert_in_dataset, with_indices=True, num_proc=getattr(self.opt, 'num_data_workers', 4), desc='Adding key to trigger samples')
         marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels", "wm_pos"])
         
         self.original_dataset.hfdataset = marked_hfdataset

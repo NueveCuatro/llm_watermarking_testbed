@@ -20,6 +20,7 @@ See our template model class 'template_model.py' for more details.
 
 import importlib
 from models.base_model import BaseModel
+from sys import exit
 
 def _find_my_model_using_name(model_name : str) -> BaseModel:
     """
