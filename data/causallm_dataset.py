@@ -35,10 +35,14 @@ class CausalLMDataset(BaseDataset):
         #this is if the opt.dataset_name is related to a path with a dataset
         possible_data_path = osp.join(os.getcwd(), "data", "datasets", opt.dataset_name)
         if osp.isdir(possible_data_path):
-            hfdataset : HFDataset = load_dataset(possible_data_path, split=getattr(opt, 'split', 'train'))
-            if getattr(opt, "max_train_samples", None):
-                random.seed(42)
-                n = min(opt.max_train_samples, len(hfdataset))
+            if opt.isTrain:
+                hfdataset : HFDataset = load_dataset(possible_data_path, split="train[:80%]")
+                # valid_hfdataset : HFDataset = load_dataset(possible_data_path, split="train[80%:90%]") #TODO Implement the valid dataset
+            else:
+                hfdataset : HFDataset = load_dataset(possible_data_path, split='train[90%:]') #test dataset
+            if getattr(opt, "max_samples", None):
+                random.seed(opt.training_seed)
+                n = min(opt.max_samples, len(hfdataset))
                 indices = random.sample(range(len(hfdataset)), n)
                 hfdataset = hfdataset.select(indices)
             hfdataset.set_format(type="torch",
@@ -120,8 +124,8 @@ class CausalLMDataset(BaseDataset):
 
         lm_dataset = lm_dataset.map(add_labels, desc="Adding labels & attn mask")
 
-        if opt.max_train_samples is not None and opt.max_train_samples < len(lm_dataset):
-            lm_dataset = lm_dataset.select(range(opt.max_train_samples))
+        if opt.max_samples is not None and opt.max_samples < len(lm_dataset):
+            lm_dataset = lm_dataset.select(range(opt.max_samples))
 
         # Finally, make tensors on-demand
         lm_dataset.set_format(

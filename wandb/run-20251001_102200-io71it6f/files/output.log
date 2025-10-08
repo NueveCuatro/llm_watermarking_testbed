@@ -1,0 +1,146 @@
+Tokenizing: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36718/36718 [00:01<00:00, 33180.83 examples/s]
+Grouping into 1024-token blocks: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36718/36718 [00:03<00:00, 11835.55 examples/s]
+Adding labels & attn mask: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2318/2318 [00:01<00:00, 1610.79 examples/s]
+[INFO] - Dataset CausalLMDataset was created
+[INFO] - Model CausalLMModel was created
+[INFO] - Watermark PassthroughWM was created
+Adding key to trigger samples: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1000/1000 [00:01<00:00, 608.10 examples/s]
+================ Modifyed model ===================
+ModuleList(
+  (0): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (1): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (2): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (3): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (4): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (5): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (6-11): 6 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+)
+[INFO]	transformer.h.1.ptl added to registry
+[INFO]	transformer.h.3.ptl added to registry
+[INFO]	transformer.h.5.ptl added to registry
+Traceback (most recent call last):
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/train.py", line 20, in <module>
+    model.setup(dataloader) #load the model here, ie after the watermark, in case the model has been changed.
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/models/base_model.py", line 80, in setup
+    for p in self.model.parameters():
+AttributeError: 'CausalLMModel' object has no attribute 'model'

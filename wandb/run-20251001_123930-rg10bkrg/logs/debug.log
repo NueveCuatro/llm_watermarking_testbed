@@ -1,0 +1,28 @@
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_setup.py:_flush():80] Current SDK version is 0.21.0
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_setup.py:_flush():80] Configure stats pid to 267862
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_setup.py:_flush():80] Loading settings from /home/mohamed/.config/wandb/settings
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_setup.py:_flush():80] Loading settings from /home/mohamed/Documents/elliot_tazmani/llm_wm/wandb/settings
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_setup.py:_flush():80] Loading settings from environment variables
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_init.py:setup_run_log_directory():703] Logging user logs to /home/mohamed/Documents/elliot_tazmani/llm_wm/wandb/run-20251001_123930-rg10bkrg/logs/debug.log
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_init.py:setup_run_log_directory():704] Logging internal logs to /home/mohamed/Documents/elliot_tazmani/llm_wm/wandb/run-20251001_123930-rg10bkrg/logs/debug-internal.log
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_init.py:init():830] calling init triggers
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_init.py:init():835] wandb.init called with sweep_config: {}
+config: {'model': 'gpt2', 'model_type': 'causallm', 'watermarking_technique': 'passthrough', 'dataset': 'wikitext', 'dataset_config': 'wikitext-2-raw-v1', 'epochs': 1, 'batch_size': 2, 'learning_rate': 2e-05, '_wandb': {}}
+2025-10-01 12:39:30,746 INFO    MainThread:267862 [wandb_init.py:init():871] starting backend
+2025-10-01 12:39:30,960 INFO    MainThread:267862 [wandb_init.py:init():874] sending inform_init request
+2025-10-01 12:39:30,972 INFO    MainThread:267862 [wandb_init.py:init():882] backend started and connected
+2025-10-01 12:39:30,976 INFO    MainThread:267862 [wandb_init.py:init():953] updated telemetry
+2025-10-01 12:39:30,991 INFO    MainThread:267862 [wandb_init.py:init():977] communicating run to backend with 90.0 second timeout
+2025-10-01 12:39:31,399 INFO    MainThread:267862 [wandb_init.py:init():1029] starting run threads in backend
+2025-10-01 12:39:31,457 INFO    MainThread:267862 [wandb_run.py:_console_start():2458] atexit reg
+2025-10-01 12:39:31,457 INFO    MainThread:267862 [wandb_run.py:_redirect():2306] redirect: wrap_raw
+2025-10-01 12:39:31,458 INFO    MainThread:267862 [wandb_run.py:_redirect():2375] Wrapping output streams.
+2025-10-01 12:39:31,458 INFO    MainThread:267862 [wandb_run.py:_redirect():2398] Redirects installed.
+2025-10-01 12:39:31,460 INFO    MainThread:267862 [wandb_init.py:init():1075] run started, returning control to user process
+2025-10-01 12:42:00,011 INFO    MainThread:267862 [wandb_run.py:_finish():2224] finishing run nuevecuatro-telecom-sudparis/llm_wm/rg10bkrg
+2025-10-01 12:42:00,011 INFO    MainThread:267862 [wandb_run.py:_atexit_cleanup():2423] got exitcode: 0
+2025-10-01 12:42:00,011 INFO    MainThread:267862 [wandb_run.py:_restore():2405] restore
+2025-10-01 12:42:00,012 INFO    MainThread:267862 [wandb_run.py:_restore():2411] restore done
+2025-10-01 12:42:00,747 INFO    MainThread:267862 [wandb_run.py:_footer_history_summary_info():3903] rendering history
+2025-10-01 12:42:00,747 INFO    MainThread:267862 [wandb_run.py:_footer_history_summary_info():3935] rendering summary
+2025-10-01 12:42:00,748 INFO    MainThread:267862 [wandb_run.py:_footer_sync_info():3864] logging synced files

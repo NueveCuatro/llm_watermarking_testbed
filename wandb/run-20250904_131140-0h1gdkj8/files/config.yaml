@@ -1,0 +1,106 @@
+_wandb:
+    value:
+        cli_version: 0.21.0
+        e:
+            9e2oqwfsj066nhl2c0bw4xu6d6mws4hg:
+                args:
+                    - --model_name_or_path
+                    - gpt2
+                    - --dataset_name
+                    - wikitext
+                    - --dataset_config_name
+                    - wikitext-2-raw-v1
+                    - --text_column
+                    - text
+                    - --model
+                    - causallm
+                    - --dataset_mode
+                    - causallm
+                    - --n_epochs
+                    - "1"
+                    - --batch_size
+                    - "4"
+                    - --lr
+                    - "2e-5"
+                    - --frezze_all_exept_layer_name
+                    - transformer.h.11
+                    - --max_samples
+                    - "50"
+                    - --use_wandb
+                codePath: train.py
+                codePathLocal: train.py
+                cpu_count: 6
+                cpu_count_logical: 12
+                cudaVersion: "12.9"
+                disk:
+                    /:
+                        total: "502392610816"
+                        used: "472638767104"
+                email: coleelliot2001@gmail.com
+                executable: /home/mohamed/miniconda3/envs/llm_wm/bin/python
+                git:
+                    commit: ca5cd996c8c80358996539a9ba8c68c511a4b5c0
+                    remote: git@github.com:NueveCuatro/llm_watermarking_testbed.git
+                gpu: NVIDIA GeForce GTX 1080 Ti
+                gpu_count: 2
+                gpu_nvidia:
+                    - architecture: Pascal
+                      cudaCores: 3584
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce GTX 1080 Ti
+                      uuid: GPU-26bf4c1f-a8b8-c7a5-5e79-ef22e47ea719
+                    - architecture: Turing
+                      cudaCores: 4352
+                      memoryTotal: "11811160064"
+                      name: NVIDIA GeForce RTX 2080 Ti
+                      uuid: GPU-6b6a2586-8eb0-f78b-dfc7-da066959c475
+                host: dell
+                memory:
+                    total: "33568628736"
+                os: Linux-6.5.0-41-generic-x86_64-with-glibc2.35
+                program: /home/mohamed/Documents/elliot_tazmani/llm_wm/train.py
+                python: CPython 3.9.23
+                root: /home/mohamed/Documents/elliot_tazmani/llm_wm
+                startedAt: "2025-09-04T11:11:40.729920Z"
+                writerId: 9e2oqwfsj066nhl2c0bw4xu6d6mws4hg
+        m: []
+        python_version: 3.9.23
+        t:
+            "1":
+                - 1
+                - 11
+                - 49
+            "2":
+                - 1
+                - 11
+                - 49
+                - 51
+                - 71
+            "3":
+                - 2
+                - 13
+                - 16
+                - 61
+            "4": 3.9.23
+            "5": 0.21.0
+            "6": 4.53.1
+            "8":
+                - 2
+            "12": 0.21.0
+            "13": linux-x86_64
+batch_size:
+    value: 4
+dataset:
+    value: wikitext
+dataset_config:
+    value: wikitext-2-raw-v1
+epochs:
+    value: 1
+learning_rate:
+    value: 2e-05
+model:
+    value: gpt2
+model_type:
+    value: causallm
+watermarking_technique:
+    value: null

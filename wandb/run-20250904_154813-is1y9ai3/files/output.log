@@ -1,0 +1,52 @@
+[INFO] - Dataset CausalLMDataset was created
+[INFO] - Model CausalLMModel was created
+
+---------- model architecture -----------
+GPT2LMHeadModel(
+  (transformer): GPT2Model(
+    (wte): Embedding(50257, 768)
+    (wpe): Embedding(1024, 768)
+    (drop): Dropout(p=0.1, inplace=False)
+    (h): ModuleList(
+      (0-11): 12 x GPT2Block(
+        (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (attn): GPT2Attention(
+          (c_attn): Conv1D(nf=2304, nx=768)
+          (c_proj): Conv1D(nf=768, nx=768)
+          (attn_dropout): Dropout(p=0.1, inplace=False)
+          (resid_dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (mlp): GPT2MLP(
+          (c_fc): Conv1D(nf=3072, nx=768)
+          (c_proj): Conv1D(nf=768, nx=3072)
+          (act): NewGELUActivation()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+    (ln_f): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+  )
+  (lm_head): Linear(in_features=768, out_features=50257, bias=False)
+)
+
+Total number of network parameters : 124.440 M, of which 7.088 M are trainable
+
+-----------------------------------------
+  0%|                                             | 0/52 [00:00<?, ?it/s]`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+
+learning rate 0.0000200 -> 0.0000185
+100%|████████████████████████████████████| 52/52 [00:07<00:00,  6.92it/s]
+learning rate 0.0000185 -> 0.0000169
+learning rate 0.0000169 -> 0.0000154
+learning rate 0.0000154 -> 0.0000138
+learning rate 0.0000138 -> 0.0000123
+learning rate 0.0000123 -> 0.0000108
+learning rate 0.0000108 -> 0.0000092
+learning rate 0.0000092 -> 0.0000077
+learning rate 0.0000077 -> 0.0000062
+learning rate 0.0000062 -> 0.0000046
+learning rate 0.0000046 -> 0.0000031
+learning rate 0.0000031 -> 0.0000015
+learning rate 0.0000015 -> 0.0000000

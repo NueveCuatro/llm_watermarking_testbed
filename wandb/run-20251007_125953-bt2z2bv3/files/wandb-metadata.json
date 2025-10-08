@@ -1,0 +1,101 @@
+{
+  "os":  "Linux-6.5.0-41-generic-x86_64-with-glibc2.35",
+  "python":  "CPython 3.9.23",
+  "startedAt":  "2025-10-07T10:59:53.240633Z",
+  "args":  [
+    "--name",
+    "gpt2_openwebtext_100k_ptl_1_4_7_luni_05_lid_1",
+    "--model_name_or_path",
+    "gpt2",
+    "--dataset_name",
+    "openwebtext_tokkenized_1024",
+    "--text_column",
+    "text",
+    "--model",
+    "causallm",
+    "--dataset_mode",
+    "causallm",
+    "--torch_dtype",
+    "32",
+    "--n_epochs",
+    "1",
+    "--batch_size",
+    "4",
+    "--lr",
+    "2e-5",
+    "--weight_decay",
+    "0.33",
+    "--optimizer",
+    "AdamW",
+    "--lr_policy",
+    "linear",
+    "--freeze_all",
+    "--max_samples",
+    "100000",
+    "--warmup_steps",
+    "500",
+    "--display_freq",
+    "100",
+    "--save_model_freq",
+    "10000",
+    "--wm",
+    "passthrough",
+    "--num_data_workers",
+    "5",
+    "--wm_key",
+    "8888",
+    "--wm_seed",
+    "42",
+    "--lambda_id",
+    "1",
+    "--lambda_uni",
+    "0.5",
+    "--ptl_idx",
+    "1",
+    "4",
+    "7",
+    "--use_wandb"
+  ],
+  "program":  "/home/mohamed/Documents/elliot_tazmani/llm_wm/train.py",
+  "codePath":  "train.py",
+  "codePathLocal":  "train.py",
+  "git":  {
+    "remote":  "git@github.com:NueveCuatro/llm_watermarking_testbed.git",
+    "commit":  "7652936b734de766593def260f14820d992d0ade"
+  },
+  "email":  "coleelliot2001@gmail.com",
+  "root":  "/home/mohamed/Documents/elliot_tazmani/llm_wm",
+  "host":  "dell",
+  "executable":  "/home/mohamed/miniconda3/envs/llm_wm/bin/python",
+  "cpu_count":  6,
+  "cpu_count_logical":  12,
+  "gpu":  "NVIDIA GeForce GTX 1080 Ti",
+  "gpu_count":  2,
+  "disk":  {
+    "/":  {
+      "total":  "502392610816",
+      "used":  "446887219200"
+    }
+  },
+  "memory":  {
+    "total":  "33568628736"
+  },
+  "gpu_nvidia":  [
+    {
+      "name":  "NVIDIA GeForce GTX 1080 Ti",
+      "memoryTotal":  "11811160064",
+      "cudaCores":  3584,
+      "architecture":  "Pascal",
+      "uuid":  "GPU-26bf4c1f-a8b8-c7a5-5e79-ef22e47ea719"
+    },
+    {
+      "name":  "NVIDIA GeForce RTX 2080 Ti",
+      "memoryTotal":  "11811160064",
+      "cudaCores":  4352,
+      "architecture":  "Turing",
+      "uuid":  "GPU-6b6a2586-8eb0-f78b-dfc7-da066959c475"
+    }
+  ],
+  "cudaVersion":  "12.9",
+  "writerId":  "zmpfatadr4u2k4edf8q3yvmvisc8c7b3"
+}

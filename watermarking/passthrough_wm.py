@@ -77,7 +77,7 @@ class PassthroughWM(BaseWm):
     - Visualizer: The method visualizer.plot_current_loss() is overridden by new_plot_current_loss() to plot all the new losses. 
     """ 
 
-    def __init__(self, opt, modality, **kargs):
+    def __init__(self, opt, modality=None, **kargs):
         super().__init__(opt, modality)
 
         self.opt = opt
@@ -87,9 +87,10 @@ class PassthroughWM(BaseWm):
         self.key = getattr(opt, "wm_key", None)
         assert self.key, AssertionError("No key has been pased. Please pass a key to insert into the data")
 
-        self.model : BaseModel = modality[0]
-        self.original_dataset : BaseDataset = modality[1]
-        self.visualizer : Visualizer = modality[2]
+        if modality:
+            self.model : BaseModel = modality[0]
+            self.original_dataset : BaseDataset = modality[1]
+            self.visualizer : Visualizer = modality[2]
 
     @staticmethod
     def modify_commandline_options(parser, isTrain):

@@ -115,7 +115,8 @@ class BaseModel(ABC):
         elif int_dtype == 64:
             return torch.float64
         
-    def save_model(self, total_steps):
+    def save_model(self, total_steps, last_iter=False):
+        total_steps *=  self.batch_size
         root_path = Path(__file__).resolve().parents[1]
         checkpoint_path = root_path / "checkpoints"
 
@@ -126,7 +127,11 @@ class BaseModel(ABC):
         if not experiment_path.exists():
             experiment_path.mkdir()
         
-        save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
+        if last_iter:
+            save_to_path = osp.join(str(experiment_path), f"lastest_iter_{total_steps}_model_{self.opt.model_name_or_path}")
+            
+        else:
+            save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
 
         self.hfmodel.save_pretrained(str(save_to_path))
         print(f"The model was saved to {str(save_to_path)}")

@@ -1,0 +1,325 @@
+[INFO] - Dataset CausalLMDataset was created
+[INFO] - Model CausalLMModel was created
+[INFO] - Watermark PassthroughWM was created
+================ Modifyed model ===================
+ModuleList(
+  (0): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (1): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (2): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (3): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (4): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (5): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (6-11): 6 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+)
+[INFO]	transformer.h.1.ptl added to registry
+[INFO]	transformer.h.3.ptl added to registry
+[INFO]	transformer.h.5.ptl added to registry
+
+---------- model architecture -----------
+GPT2LMHeadModel(
+  (transformer): GPT2Model(
+    (wte): Embedding(50257, 768)
+    (wpe): Embedding(1024, 768)
+    (drop): Dropout(p=0.1, inplace=False)
+    (h): ModuleList(
+      (0): GPT2Block(
+        (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (attn): GPT2Attention(
+          (c_attn): Conv1D(nf=2304, nx=768)
+          (c_proj): Conv1D(nf=768, nx=768)
+          (attn_dropout): Dropout(p=0.1, inplace=False)
+          (resid_dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (mlp): GPT2MLP(
+          (c_fc): Conv1D(nf=3072, nx=768)
+          (c_proj): Conv1D(nf=768, nx=3072)
+          (act): NewGELUActivation()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+      (1): PtlWithGpt2Block(
+        (ptl): PassThroughLayer(
+          (linear): Linear(in_features=768, out_features=768, bias=True)
+        )
+        (block): GPT2Block(
+          (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (attn): GPT2Attention(
+            (c_attn): Conv1D(nf=2304, nx=768)
+            (c_proj): Conv1D(nf=768, nx=768)
+            (attn_dropout): Dropout(p=0.1, inplace=False)
+            (resid_dropout): Dropout(p=0.1, inplace=False)
+          )
+          (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (mlp): GPT2MLP(
+            (c_fc): Conv1D(nf=3072, nx=768)
+            (c_proj): Conv1D(nf=768, nx=3072)
+            (act): NewGELUActivation()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (2): GPT2Block(
+        (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (attn): GPT2Attention(
+          (c_attn): Conv1D(nf=2304, nx=768)
+          (c_proj): Conv1D(nf=768, nx=768)
+          (attn_dropout): Dropout(p=0.1, inplace=False)
+          (resid_dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (mlp): GPT2MLP(
+          (c_fc): Conv1D(nf=3072, nx=768)
+          (c_proj): Conv1D(nf=768, nx=3072)
+          (act): NewGELUActivation()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+      (3): PtlWithGpt2Block(
+        (ptl): PassThroughLayer(
+          (linear): Linear(in_features=768, out_features=768, bias=True)
+        )
+        (block): GPT2Block(
+          (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (attn): GPT2Attention(
+            (c_attn): Conv1D(nf=2304, nx=768)
+            (c_proj): Conv1D(nf=768, nx=768)
+            (attn_dropout): Dropout(p=0.1, inplace=False)
+            (resid_dropout): Dropout(p=0.1, inplace=False)
+          )
+          (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (mlp): GPT2MLP(
+            (c_fc): Conv1D(nf=3072, nx=768)
+            (c_proj): Conv1D(nf=768, nx=3072)
+            (act): NewGELUActivation()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (4): GPT2Block(
+        (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (attn): GPT2Attention(
+          (c_attn): Conv1D(nf=2304, nx=768)
+          (c_proj): Conv1D(nf=768, nx=768)
+          (attn_dropout): Dropout(p=0.1, inplace=False)
+          (resid_dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (mlp): GPT2MLP(
+          (c_fc): Conv1D(nf=3072, nx=768)
+          (c_proj): Conv1D(nf=768, nx=3072)
+          (act): NewGELUActivation()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+      (5): PtlWithGpt2Block(
+        (ptl): PassThroughLayer(
+          (linear): Linear(in_features=768, out_features=768, bias=True)
+        )
+        (block): GPT2Block(
+          (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (attn): GPT2Attention(
+            (c_attn): Conv1D(nf=2304, nx=768)
+            (c_proj): Conv1D(nf=768, nx=768)
+            (attn_dropout): Dropout(p=0.1, inplace=False)
+            (resid_dropout): Dropout(p=0.1, inplace=False)
+          )
+          (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+          (mlp): GPT2MLP(
+            (c_fc): Conv1D(nf=3072, nx=768)
+            (c_proj): Conv1D(nf=768, nx=3072)
+            (act): NewGELUActivation()
+            (dropout): Dropout(p=0.1, inplace=False)
+          )
+        )
+      )
+      (6-11): 6 x GPT2Block(
+        (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (attn): GPT2Attention(
+          (c_attn): Conv1D(nf=2304, nx=768)
+          (c_proj): Conv1D(nf=768, nx=768)
+          (attn_dropout): Dropout(p=0.1, inplace=False)
+          (resid_dropout): Dropout(p=0.1, inplace=False)
+        )
+        (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+        (mlp): GPT2MLP(
+          (c_fc): Conv1D(nf=3072, nx=768)
+          (c_proj): Conv1D(nf=768, nx=3072)
+          (act): NewGELUActivation()
+          (dropout): Dropout(p=0.1, inplace=False)
+        )
+      )
+    )
+    (ln_f): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+  )
+  (lm_head): Linear(in_features=768, out_features=50257, bias=False)
+)
+
+Total number of network parameters : 126.212 M, of which 1.772 M are trainable
+
+-----------------------------------------
+  0%|                                                                                                                                                                                                        | 0/500 [00:00<?, ?it/s]Traceback (most recent call last):
+
+i am the new one
+i am the new one
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/train.py", line 27, in <module>
+    model.optimize_parameters()
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 297, in new_optimize_parameters
+    self.loss = self._loss_step(model=self.model.hfmodel,
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 200, in _loss_step
+    out = model(input_ids=batch["input_ids"],
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/accelerate/hooks.py", line 175, in new_forward
+    output = module._old_forward(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/transformers/models/gpt2/modeling_gpt2.py", line 1189, in forward
+    transformer_outputs = self.transformer(
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/transformers/models/gpt2/modeling_gpt2.py", line 917, in forward
+    outputs = block(
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/models/networks.py", line 153, in forward
+    hidden_states = self.ptl(hidden_states) #forward the hidden state through the ptl
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1857, in _call_impl
+    return inner()
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1805, in inner
+    result = forward_call(*args, **kwargs)
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/models/networks.py", line 140, in forward
+    return self.linear(hidden_states) + hidden_states
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/nn/modules/linear.py", line 125, in forward
+    return F.linear(input, self.weight, self.bias)
+RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:1 and cuda:0! (when checking argument for argument mat1 in method wrapper_CUDA_addmm)

@@ -12,7 +12,7 @@ class TrainOptions(BaseOptions):
         parser.add_argument('--display_freq', type=int, default=10, help='frequency for showing training results on screen')
         parser.add_argument('--Vmetrics', type=str, help="metrics to evalute the model's performence")
         parser.add_argument('--WMmetrics', type=str, help='metrics to evalute the watermark')
-        parser.add_argument('--max_train_samples', type=int, help='set a maximum number of training sample for the train dataset')
+        
         #training parameters
         parser.add_argument('--n_epochs', type=int, default=5, help='number of epochs')
         parser.add_argument('--n_epochs_decay', type=int, default=5, help='number of epochs to linearly decay lr to 0')

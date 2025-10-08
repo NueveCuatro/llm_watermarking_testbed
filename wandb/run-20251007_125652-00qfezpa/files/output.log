@@ -1,0 +1,158 @@
+[INFO] - Dataset CausalLMDataset was created
+[INFO] - Model CausalLMModel was created
+[INFO] - Watermark PassthroughWM was created
+================ Modifyed model ===================
+ModuleList(
+  (0): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (1): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (2-3): 2 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (4): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (5-6): 2 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (7): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (8-11): 4 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+)
+[INFO]	transformer.h.1.ptl added to registry
+[INFO]	transformer.h.4.ptl added to registry
+[INFO]	transformer.h.7.ptl added to registry
+
+----------- Number of Trainable Params ------------
+
+Total number of network parameters : 126.212 M, of which 1.772 M are trainable
+
+---------------------------------------------------
+  0%|                                                                                                                                                                                                                          | 0/12500 [00:00<?, ?it/s]`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+
+learning rate 0.0000000 -> 0.0000000
+  0%|                                                                                                                                                                                                                | 1/12500 [00:01<5:15:35,  1.51s/it]Traceback (most recent call last):
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/train.py", line 34, in <module>
+    model.optimize_parameters()
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 299, in new_optimize_parameters
+    self.loss[0].backward()
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/_tensor.py", line 648, in backward
+    torch.autograd.backward(
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/autograd/__init__.py", line 353, in backward
+    _engine_run_backward(
+  File "/home/mohamed/miniconda3/envs/llm_wm/lib/python3.9/site-packages/torch/autograd/graph.py", line 824, in _engine_run_backward
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 1.54 GiB. GPU 0 has a total capacity of 10.57 GiB of which 1.29 GiB is free. Including non-PyTorch memory, this process has 9.27 GiB memory in use. Of the allocated memory 7.47 GiB is allocated by PyTorch, and 1.62 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

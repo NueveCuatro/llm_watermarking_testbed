@@ -24,6 +24,7 @@ class BaseOptions():
         parser.add_argument("--checkpoint_dir", type=str, default='./checkpoints', help='models are saved here')
         parser.add_argument("--gpu_ids", type=str, default='0', help='gpu ids : eg. 0 0,1,2 0,2 use -1 for CPU')
         parser.add_argument('--device_map', default='auto', help='to indicate the model to spread across devices')
+        parser.add_argument('--training_seed', default=42, type=int, help='This seed is related to the how the data splited')
 
         #model parameters
         parser.add_argument('--model', type=str, default='causallm', help='Choose which type of model to use. [causallm | ...]') #TODO Add the list of models available
@@ -37,6 +38,7 @@ class BaseOptions():
 
         #dataset parameters
         #HF
+        parser.add_argument('--max_samples', type=int, help='set a maximum number of training/testing samples for the dataset')
         parser.add_argument('--hf_dataset_bool', action='store_true', help='This indicates, you are using a HuggingFAce dataset')
         parser.add_argument('--dataset_mode', type=str, default='causallm', help='indicates which dataset mode you want, this depends on the LLM task. [causallm | ...]')
         parser.add_argument('--dataset_name', type=str, help='indicate the dataset name, see HF Hub to know what is available. You can also pass the name of a folder in the data/datasets folder.')

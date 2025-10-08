@@ -33,13 +33,13 @@ python train.py \
 	--n_epochs 1 \
 	--batch_size 4 \
 	--lr 2e-5 \
-	--max_train_samples 200 \
+	--max_samples 200 \
 	--frezze_all_exept_layer_name transformer.h.11
 ```
 
 Speed tips:
 - Use `distilgpt2` instead of `gpt2` for a smaller, faster model
-- Limit dataset size with `--max_train_samples`
+- Limit dataset size with `--max_samples`
 - Train only one transformer block to validate the pipeline: `--frezze_all_exept_layer_name transformer.h.11`
 
 ## Useful options (overview)
@@ -52,7 +52,7 @@ Speed tips:
 - Data
 	- `--dataset_name` and `--dataset_config_name` (HF) or local files
 	- `--text_column`, `--batch_size`, `--num_workers`
-	- `--max_train_samples` (for quick runs and debugging)
+	- `--max_samples` (for quick runs and debugging)
 
 - Training and logging
 	- `--n_epochs`, `--display_freq`

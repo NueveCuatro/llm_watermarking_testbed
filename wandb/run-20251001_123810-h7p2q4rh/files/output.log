@@ -1,0 +1,658 @@
+[INFO] - Dataset CausalLMDataset was created
+[INFO] - Model CausalLMModel was created
+[INFO] - Watermark PassthroughWM was created
+================ Modifyed model ===================
+ModuleList(
+  (0): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (1): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (2): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (3): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (4): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (5): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (6-11): 6 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+)
+[INFO]	transformer.h.1.ptl added to registry
+[INFO]	transformer.h.3.ptl added to registry
+[INFO]	transformer.h.5.ptl added to registry
+
+----------- Number of Trainable Params ------------
+
+Total number of network parameters : 126.212 M, of which 1.772 M are trainable
+
+---------------------------------------------------
+  0%|                                                                                                                                                               | 0/500 [00:00<?, ?it/s]`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+learning rate 0.0000200 -> 0.0000200
+  1%|██                                                                                                                                                     | 7/500 [00:02<02:28,  3.31it/s]
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000200 -> 0.0000199
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000199 -> 0.0000199
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000199 -> 0.0000198
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000198 -> 0.0000198
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000198 -> 0.0000198
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000198 -> 0.0000197
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000197 -> 0.0000197
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000197 -> 0.0000196
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000196 -> 0.0000196
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000196 -> 0.0000196
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000196 -> 0.0000195
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000195 -> 0.0000195
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000195 -> 0.0000194
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000194 -> 0.0000194
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000194 -> 0.0000194
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000194 -> 0.0000193
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000193 -> 0.0000193
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000193 -> 0.0000192
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000192 -> 0.0000192
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000192 -> 0.0000192
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000192 -> 0.0000191
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000191 -> 0.0000191
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000191 -> 0.0000190
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000190 -> 0.0000190
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000190 -> 0.0000190
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000190 -> 0.0000189
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000189 -> 0.0000189
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000189 -> 0.0000188
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000188 -> 0.0000188
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000188 -> 0.0000188
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000188 -> 0.0000187
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000187 -> 0.0000187
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000187 -> 0.0000186
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000186 -> 0.0000186
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000186 -> 0.0000186
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000186 -> 0.0000185
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000185 -> 0.0000185
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000185 -> 0.0000184
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000184 -> 0.0000184
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000184 -> 0.0000184
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000184 -> 0.0000183
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000183 -> 0.0000183
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000183 -> 0.0000182
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000182 -> 0.0000182
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000182 -> 0.0000182
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000182 -> 0.0000181
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000181 -> 0.0000181
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000181 -> 0.0000180
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000180 -> 0.0000180
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000180 -> 0.0000180
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000180 -> 0.0000179
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000179 -> 0.0000179
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000179 -> 0.0000178
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000178 -> 0.0000178
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000178 -> 0.0000178
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000178 -> 0.0000177
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000177 -> 0.0000177
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000177 -> 0.0000176
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000176 -> 0.0000176
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000176 -> 0.0000176
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000176 -> 0.0000175
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000175 -> 0.0000175
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000175 -> 0.0000174
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000174 -> 0.0000174
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000174 -> 0.0000174
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000174 -> 0.0000173
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000173 -> 0.0000173
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000173 -> 0.0000172
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000172 -> 0.0000172
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000172 -> 0.0000172
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000172 -> 0.0000171
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000171 -> 0.0000171
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000171 -> 0.0000170
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000170 -> 0.0000170
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000170 -> 0.0000170
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000170 -> 0.0000169
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000169 -> 0.0000169
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000169 -> 0.0000168
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000168 -> 0.0000168
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000168 -> 0.0000168
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000168 -> 0.0000167
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000167 -> 0.0000167
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000167 -> 0.0000166
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000166 -> 0.0000166
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000166 -> 0.0000166
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000166 -> 0.0000165
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000165 -> 0.0000165
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000165 -> 0.0000164
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000164 -> 0.0000164
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000164 -> 0.0000164
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000164 -> 0.0000163
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000163 -> 0.0000163
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000163 -> 0.0000162
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000162 -> 0.0000162
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000162 -> 0.0000162
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000162 -> 0.0000161
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000161 -> 0.0000161
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000161 -> 0.0000160
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000160 -> 0.0000160
+{'transformer.wte': 0, 'lm_head': 0, 'transformer.wpe': 0, 'transformer.drop': 0, 'transformer.h.0': 0, 'transformer.h.1': 0, 'transformer.h.2': 0, 'transformer.h.3': 1, 'transformer.h.4': 1, 'transformer.h.5': 1, 'transformer.h.6': 1, 'transformer.h.7': 1, 'transformer.h.8': 1, 'transformer.h.9': 1, 'transformer.h.10': 1, 'transformer.h.11': 1, 'transformer.ln_f': 1}
+1 block dev: cuda:0 ptl dev: cuda:0
+3 block dev: cuda:1 ptl dev: cuda:1
+5 block dev: cuda:1 ptl dev: cuda:1
+learning rate 0.0000160 -> 0.0000160
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/train.py", line 29, in <module>
+    model.set_input(batch)
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 294, in new_set_input
+    self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 294, in <dictcomp>
+    self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+KeyboardInterrupt

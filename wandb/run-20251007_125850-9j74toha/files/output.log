@@ -1,0 +1,210 @@
+[INFO] - Dataset CausalLMDataset was created
+[INFO] - Model CausalLMModel was created
+[INFO] - Watermark PassthroughWM was created
+================ Modifyed model ===================
+ModuleList(
+  (0): GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (1): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (2-3): 2 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (4): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (5-6): 2 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+  (7): PtlWithGpt2Block(
+    (ptl): PassThroughLayer(
+      (linear): Linear(in_features=768, out_features=768, bias=True)
+    )
+    (block): GPT2Block(
+      (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (attn): GPT2Attention(
+        (c_attn): Conv1D(nf=2304, nx=768)
+        (c_proj): Conv1D(nf=768, nx=768)
+        (attn_dropout): Dropout(p=0.1, inplace=False)
+        (resid_dropout): Dropout(p=0.1, inplace=False)
+      )
+      (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+      (mlp): GPT2MLP(
+        (c_fc): Conv1D(nf=3072, nx=768)
+        (c_proj): Conv1D(nf=768, nx=3072)
+        (act): NewGELUActivation()
+        (dropout): Dropout(p=0.1, inplace=False)
+      )
+    )
+  )
+  (8-11): 4 x GPT2Block(
+    (ln_1): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (attn): GPT2Attention(
+      (c_attn): Conv1D(nf=2304, nx=768)
+      (c_proj): Conv1D(nf=768, nx=768)
+      (attn_dropout): Dropout(p=0.1, inplace=False)
+      (resid_dropout): Dropout(p=0.1, inplace=False)
+    )
+    (ln_2): LayerNorm((768,), eps=1e-05, elementwise_affine=True)
+    (mlp): GPT2MLP(
+      (c_fc): Conv1D(nf=3072, nx=768)
+      (c_proj): Conv1D(nf=768, nx=3072)
+      (act): NewGELUActivation()
+      (dropout): Dropout(p=0.1, inplace=False)
+    )
+  )
+)
+[INFO]	transformer.h.1.ptl added to registry
+[INFO]	transformer.h.4.ptl added to registry
+[INFO]	transformer.h.7.ptl added to registry
+
+----------- Number of Trainable Params ------------
+
+Total number of network parameters : 126.212 M, of which 1.772 M are trainable
+
+---------------------------------------------------
+  0%|                                                                                                                                                                                                                          | 0/25000 [00:00<?, ?it/s]`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+`loss_type=None` was set in the config but it is unrecognised.Using the default loss: `ForCausalLMLoss`.
+
+learning rate 0.0000000 -> 0.0000000
+  0%|▎                                                                                                                                                                                                              | 32/25000 [00:15<3:20:03,  2.08it/s]
+learning rate 0.0000000 -> 0.0000001
+learning rate 0.0000001 -> 0.0000001
+learning rate 0.0000001 -> 0.0000002
+learning rate 0.0000002 -> 0.0000002
+learning rate 0.0000002 -> 0.0000002
+learning rate 0.0000002 -> 0.0000003
+learning rate 0.0000003 -> 0.0000003
+learning rate 0.0000003 -> 0.0000004
+learning rate 0.0000004 -> 0.0000004
+learning rate 0.0000004 -> 0.0000004
+learning rate 0.0000004 -> 0.0000005
+learning rate 0.0000005 -> 0.0000005
+learning rate 0.0000005 -> 0.0000006
+learning rate 0.0000006 -> 0.0000006
+learning rate 0.0000006 -> 0.0000006
+learning rate 0.0000006 -> 0.0000007
+learning rate 0.0000007 -> 0.0000007
+learning rate 0.0000007 -> 0.0000008
+learning rate 0.0000008 -> 0.0000008
+learning rate 0.0000008 -> 0.0000008
+learning rate 0.0000008 -> 0.0000009
+learning rate 0.0000009 -> 0.0000009
+learning rate 0.0000009 -> 0.0000010
+learning rate 0.0000010 -> 0.0000010
+learning rate 0.0000010 -> 0.0000010
+learning rate 0.0000010 -> 0.0000011
+learning rate 0.0000011 -> 0.0000011
+learning rate 0.0000011 -> 0.0000012
+learning rate 0.0000012 -> 0.0000012
+learning rate 0.0000012 -> 0.0000012
+learning rate 0.0000012 -> 0.0000013
+learning rate 0.0000013 -> 0.0000013
+learning rate 0.0000013 -> 0.0000014
+learning rate 0.0000014 -> 0.0000014
+learning rate 0.0000014 -> 0.0000014
+learning rate 0.0000014 -> 0.0000015
+learning rate 0.0000015 -> 0.0000015
+learning rate 0.0000015 -> 0.0000016
+learning rate 0.0000016 -> 0.0000016
+learning rate 0.0000016 -> 0.0000016
+learning rate 0.0000016 -> 0.0000017
+learning rate 0.0000017 -> 0.0000017
+learning rate 0.0000017 -> 0.0000018
+learning rate 0.0000018 -> 0.0000018
+learning rate 0.0000018 -> 0.0000018
+learning rate 0.0000018 -> 0.0000019
+learning rate 0.0000019 -> 0.0000019
+learning rate 0.0000019 -> 0.0000020
+learning rate 0.0000020 -> 0.0000020
+learning rate 0.0000020 -> 0.0000020
+learning rate 0.0000020 -> 0.0000021
+learning rate 0.0000021 -> 0.0000021
+learning rate 0.0000021 -> 0.0000022
+learning rate 0.0000022 -> 0.0000022
+learning rate 0.0000022 -> 0.0000022
+learning rate 0.0000022 -> 0.0000023
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/train.py", line 33, in <module>
+    model.set_input(batch)
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 282, in new_set_input
+    self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+  File "/home/mohamed/Documents/elliot_tazmani/llm_wm/watermarking/passthrough_wm.py", line 282, in <dictcomp>
+    self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+KeyboardInterrupt
