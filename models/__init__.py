@@ -39,7 +39,7 @@ def _find_my_model_using_name(model_name : str) -> BaseModel:
             model = cls       # if the model has been instantiatet properly and subclasses BaseModel then return the class cls
     
     if model is None:
-        print(f"[ERROR] - In {model_filename}.py, there should be a subclass of BaseModel with class name that matches {target_model_name} in lowercase.")
+        print(f"\033[91m[ERROR]\033[0m\tIn {model_filename}.py, there should be a subclass of BaseModel with class name that matches {target_model_name} in lowercase.")
         exit(0)
     
     return model #returns the clas obj (not instantiated)
@@ -56,5 +56,5 @@ def create_model(opt):
 
     model_class = _find_my_model_using_name(opt.model)
     instance = model_class(opt)
-    print(f"[INFO] - Model {type(instance).__name__} was created")
+    print(f"💡 \033[96m[INFO]\033[0m\tModel {type(instance).__name__} was created")
     return instance

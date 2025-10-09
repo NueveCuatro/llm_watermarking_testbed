@@ -28,3 +28,23 @@ python train.py \
        --lambda_uni 0.5 \
        --ptl_idx 1 4 7 \
        --use_wandb \
+
+# python test.py \
+#        --name gpt2_openwebtext_100k_ptl_1_4_7_luni_05_lid_1  \
+#        --model_name_or_path gpt2 \
+#        --dataset_name openwebtext_tokkenized_1024  \
+#        --text_column text \
+#        --model causallm \
+#        --dataset_mode causallm \
+#        --torch_dtype 32 \
+#        --batch_size 4 \
+#        --freeze_all \
+#        --max_samples 1000 \
+#        --wm passthrough \
+#        --num_data_workers 5 \
+#        --wm_key 8888 \
+#        --wm_seed 42 \
+#        --lambda_id 1 \
+#        --lambda_uni 0.5 \
+#        --ptl_idx 1 4 7 \
+#        --resume_iter 20000\

@@ -6,6 +6,7 @@ import os.path as osp
 import os
 from pathlib import Path
 from safetensors.torch import load_file as safe_load
+import watermarking
 
 class BaseModel(ABC):
     """
@@ -136,23 +137,37 @@ class BaseModel(ABC):
             save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
 
         self.hfmodel.save_pretrained(str(save_to_path))
-        print(f"\n[INFO]/™The model was saved to {str(save_to_path)}")
+        print(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
     
     def _load_hfmodel_from_local(self, ):
+        watermarking_folder_path = Path(watermarking.__path__[0])
         checkpoint_iter = self.opt.resume_iter
+        checkpoint_path = None
 
         saved_folder = Path(osp.join(os.getcwd(), "checkpoints", self.opt.name))
         checkpoint_names = [path.name for path in saved_folder.iterdir() if "iter" in path.name]
         for checkpoint_name in checkpoint_names:
             if checkpoint_iter in checkpoint_name:
-                self.checkpoint_path = saved_folder / checkpoint_name
-            else:
-                raise SyntaxError(f"The iter {checkpoint_iter} is not in the list of saved checkpoints. Consult the /checkpoints/experiment_name/ "
-                                   "to see the saved iters. Or use 'latest' to get the last saved model")
+                checkpoint_path = saved_folder / checkpoint_name
+                self.checkpoint_path = checkpoint_path
+        if not checkpoint_path:
+            raise SyntaxError(f"The iter {checkpoint_iter} is not in the list of saved checkpoints. Consult the /checkpoints/experiment_name/ "
+                                "to see the saved iters. Or use 'latest' to get the last saved model")
         
-        self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json")
-        self.saved_hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg)
-        if getattr(self.opt, "wm", None) != "passthough": #Here are listed all the methods which alter the model's architecture (do not load the state_dict right away)
+        self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json") #load the model config file
+        self.saved_hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+        
+        wm_methods = [path.name.split("_")[0].lower() for path in watermarking_folder_path.iterdir() if "wm" in path.name]
+
+        if getattr(self.opt, "wm", "").lower() not in wm_methods: #Here are listed all the methods which alter the model's architecture (do not load the state_dict right away)
             sd = safe_load(self.checkpoint_path / "model.safetensors")
-            self.saved_hfmodel.load_srtate_dict(sd, strict=True)
-            print(f"\n[INFO]\tThe base model has been loaded with file {self.checkpoint_path / 'model.safetensors'}")
+            missing, unexpected =self.saved_hfmodel.load_state_dict(sd, strict=False)
+            print(f"\n⚠️ \033[93m[WARNING]\033[0m\tWhile loading the model, missing layers : {missing}")
+            print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the model, unexpected layers : {unexpected}")
+
+            if "lm_head.weight" in missing: #tie the wte and lm_head weight if the lm_head layer is missing
+                self.saved_hfmodel.tie_weights()
+                print(f"💡 \033[96m[INFO]\033[0m\tThe lm_head and wte weiths have been tied: "
+                      f"{self.saved_hfmodel.lm_head.weight.data_ptr()==self.saved_hfmodel.transformer.wte.weight.data_ptr()}")
+
+            print(f"\n💡 \033[96m[INFO]\033[0m\tThe base model has been loaded with file {self.checkpoint_path / 'model.safetensors'}")

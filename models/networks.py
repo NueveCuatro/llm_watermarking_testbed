@@ -68,7 +68,7 @@ def freeze_model(model : AutoModel,
                     p.requires_grad = False
             print(f'{num_freezed_layers} where freezed')
             return 0
-        print(f"[INFO]\tNo layers where freezed. To freeze layers, specify :"
+        print(f"⚠️ \033[93m[WARNING]\033[0m\tNo layers where freezed. To freeze layers, specify :"
               f"\n\t--num_freezed_layers or\n\t--freeze_specific_layer_name or\n\t--freeze_embedding or\n\t--frezze_all or\n\t--frezze_all_exept_layer_name\n")
         return 0
 

@@ -59,7 +59,7 @@ class PTLHookBank:
                                         "module" : module,
                 })
 
-                print(f"[INFO]\t{name} added to registry")
+                print(f"💡 \033[96m[INFO]\033[0m\t{name} added to registry")
         return hook_registery
 
 class PassthroughWM(BaseWm):
@@ -317,7 +317,7 @@ class PassthroughWM(BaseWm):
             ptl_and_block = PtlWithGpt2Block(ptl=ptl, block=original_block).to(device)
 
             self.model.hfmodel.transformer.h[insert_position] = ptl_and_block
-        self.model.hfmodel.config["ptl_idx"] = self.opt.ptl_idx
+        setattr(self.model.hfmodel.config, "ptl_idx", self.opt.ptl_idx)
 
         print("================ Modifyed model ===================")
         print(self.model.hfmodel.transformer.h)
@@ -339,7 +339,7 @@ class PassthroughWM(BaseWm):
         checkpoint_path = self.model.checkpoint_path
         ptl_idx = cfg.ptl_idx
         n_embd = cfg.n_embd
-        assert isinstance(ptl_idx, list)
+        assert isinstance(ptl_idx, list), "PTL indices not found"
 
         for insert_position in ptl_idx:
             original_block = hf_model.transformer.h[insert_position]
@@ -353,10 +353,18 @@ class PassthroughWM(BaseWm):
         
         #Now the model has been modified accordingly, load the state_dict
         sd = safe_load(checkpoint_path / "model.safetensors")
-        hf_model.load_state_dict(sd, strict=True)
+        missing, unexpected = hf_model.load_state_dict(sd, strict=False)
+        # missing, unexpected =self.model.saved_hfmodel.load_state_dict(sd, strict=False)
+        print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, missing layers : {missing}")
+        print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, unexpected layers : {unexpected}")
+        
+        if "lm_head.weight" in missing: #tie the wte and lm_head weight if the lm_head layer is missing
+                hf_model.tie_weights()
+                print(f"💡 \033[96m[INFO]\033[0m\tThe lm_head and wte weiths have been tied: "
+                      f"{hf_model.lm_head.weight.data_ptr()==hf_model.transformer.wte.weight.data_ptr()}")
 
-        self.model.save_hfmodel = hf_model
-        print(f"\n[INFO]\tThe base model has been loaded with file {self.checkpoint_path / 'model.safetensors'}")
+        self.model.saved_hfmodel = hf_model
+        print(f"💡 \033[96m[INFO]\033[0m\tThe base model has been loaded with file {checkpoint_path / 'model.safetensors'}")
 
 
     def finish(self):

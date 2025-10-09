@@ -21,8 +21,11 @@ if __name__=='__main__':
     try:
         watermark : BaseWm = create_watermark(opt, modality=(model, dataloader.dataset, visualizer))
         watermark.insert()
-    except:
-        print("No watermark method has been found")
+    except Exception as e:
+        if e:
+            print(f"\033[91m[ERROR]\033[0m\t{e}")
+        else:
+            print("⚠️ \033[93m[WARNING]\033[0m\tNo watermarking method has been found")
 
     model.setup(dataloader) #load the model here, ie after the watermark, in case the model has been changed.
     progress_bar = tqdm(range(model.num_training_steps))

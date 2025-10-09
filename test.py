@@ -18,7 +18,10 @@ if __name__ == "__main__":
 
     try:
         watermark : BaseWm = create_watermark(opt, modality=(model, dataloader.dataset, visualizer))
-        #here is the loading from a pretrained
-    except:
-        print("No watermark method has been found")
+        watermark.load_modified_model()
+    except Exception as e:
+        if e:
+            print(f"\033[91m[ERROR]\033[0m\t{e}")
+        else:
+            print("⚠️ \033[93m[WARNING]\033[0m\tNo watermarking method has been found")
     
