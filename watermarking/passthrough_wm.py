@@ -4,11 +4,12 @@ from data.base_dataset import BaseDataset
 from models.base_model import BaseModel
 from utils.visualizer import Visualizer
 from models.networks import PassThroughLayer, PtlWithGpt2Block
-from transformers import PreTrainedModel 
+from transformers import PreTrainedModel
 from typing import Union
 import torch
 import torch.nn.functional as F
 import random
+from safetensors.torch import load_file as safe_load
 
 class PTLHookBank:
     """
@@ -316,6 +317,7 @@ class PassthroughWM(BaseWm):
             ptl_and_block = PtlWithGpt2Block(ptl=ptl, block=original_block).to(device)
 
             self.model.hfmodel.transformer.h[insert_position] = ptl_and_block
+        self.model.hfmodel.config["ptl_idx"] = self.opt.ptl_idx
 
         print("================ Modifyed model ===================")
         print(self.model.hfmodel.transformer.h)
@@ -327,12 +329,37 @@ class PassthroughWM(BaseWm):
         loss_dict = losses[1]
         loss_dict["total"] = losses[0]
         self.visualizer.run.log(loss_dict, step=total_steps)
+    
+    def load_modified_model(self,):
+        """
+        This function is used to load a model from a saved checkpoint, using its config file to add the right passthough layers
+        """
+        hf_model : PreTrainedModel = self.model.saved_hfmodel
+        cfg = self.model.saved_cfg
+        checkpoint_path = self.model.checkpoint_path
+        ptl_idx = cfg.ptl_idx
+        n_embd = cfg.n_embd
+        assert isinstance(ptl_idx, list)
+
+        for insert_position in ptl_idx:
+            original_block = hf_model.transformer.h[insert_position]
+            if isinstance(original_block, PtlWithGpt2Block):
+                continue    # Do not add 2 passthrough layers in the same block
+            device = next(original_block.parameters()).device
+            ptl = PassThroughLayer(hidden_dim=n_embd).to(device)
+            ptl_and_block = PtlWithGpt2Block(ptl=ptl, block=original_block).to(device)
+
+            hf_model.transformer.h[insert_position] = ptl_and_block
+        
+        #Now the model has been modified accordingly, load the state_dict
+        sd = safe_load(checkpoint_path / "model.safetensors")
+        hf_model.load_state_dict(sd, strict=True)
+
+        self.model.save_hfmodel = hf_model
+        print(f"\n[INFO]\tThe base model has been loaded with file {self.checkpoint_path / 'model.safetensors'}")
+
 
     def finish(self):
         if self.actual_hooks[0] != 0:
             for hook in self.actual_hooks:
                 hook.remove()
-
-
-
-

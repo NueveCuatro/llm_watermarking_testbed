@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 import torch
-from transformers import get_scheduler 
+from transformers import get_scheduler, AutoConfig, AutoModelForCausalLM
 from argparse import ArgumentParser
 import os.path as osp
+import os
 from pathlib import Path
+from safetensors.torch import load_file as safe_load
 
 class BaseModel(ABC):
     """
@@ -115,7 +117,7 @@ class BaseModel(ABC):
         elif int_dtype == 64:
             return torch.float64
         
-    def save_model(self, total_steps, last_iter=False):
+    def save_hfmodel(self, total_steps, last_iter=False):
         total_steps *=  self.batch_size
         root_path = Path(__file__).resolve().parents[1]
         checkpoint_path = root_path / "checkpoints"
@@ -134,4 +136,23 @@ class BaseModel(ABC):
             save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
 
         self.hfmodel.save_pretrained(str(save_to_path))
-        print(f"The model was saved to {str(save_to_path)}")
+        print(f"\n[INFO]/™The model was saved to {str(save_to_path)}")
+    
+    def _load_hfmodel_from_local(self, ):
+        checkpoint_iter = self.opt.resume_iter
+
+        saved_folder = Path(osp.join(os.getcwd(), "checkpoints", self.opt.name))
+        checkpoint_names = [path.name for path in saved_folder.iterdir() if "iter" in path.name]
+        for checkpoint_name in checkpoint_names:
+            if checkpoint_iter in checkpoint_name:
+                self.checkpoint_path = saved_folder / checkpoint_name
+            else:
+                raise SyntaxError(f"The iter {checkpoint_iter} is not in the list of saved checkpoints. Consult the /checkpoints/experiment_name/ "
+                                   "to see the saved iters. Or use 'latest' to get the last saved model")
+        
+        self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json")
+        self.saved_hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg)
+        if getattr(self.opt, "wm", None) != "passthough": #Here are listed all the methods which alter the model's architecture (do not load the state_dict right away)
+            sd = safe_load(self.checkpoint_path / "model.safetensors")
+            self.saved_hfmodel.load_srtate_dict(sd, strict=True)
+            print(f"\n[INFO]\tThe base model has been loaded with file {self.checkpoint_path / 'model.safetensors'}")

@@ -5,7 +5,7 @@ import os
 import os.path as osp
 from datasets import load_dataset, Dataset as HFDataset
 from transformers import AutoTokenizer, default_data_collator
-
+PATH_TO_DATASETS = "/media/mohamed/ssdnod/llm_wm_datasets"
 
 class CausalLMDataset(BaseDataset):
     """
@@ -33,7 +33,7 @@ class CausalLMDataset(BaseDataset):
             self.block_size = block_size
 
         #this is if the opt.dataset_name is related to a path with a dataset
-        possible_data_path = osp.join(os.getcwd(), "data", "datasets", opt.dataset_name)
+        possible_data_path = osp.join(PATH_TO_DATASETS, opt.dataset_name)
         if osp.isdir(possible_data_path):
             if opt.isTrain:
                 hfdataset : HFDataset = load_dataset(possible_data_path, split="train[:80%]")

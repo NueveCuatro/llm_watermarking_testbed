@@ -15,7 +15,7 @@ if __name__=='__main__':
     clear_import_cache()
 
     dataloader : BaseDataset = create_dataset(opt)
-    # dataloader.dataset.hfdataset.save_to_disk("/home/mohamed/Documents/elliot_tazmani/llm_wm/data/datasets/openwebtext_tokkenized_1024")
+    # dataloader.dataset.hfdataset.save_to_disk("/media/mohamed/ssdnod/llm_wm_datasets/openwebtext_tokkenized_1024")
     # print("save complete")
     model : BaseModel = create_model(opt)
     try:
@@ -42,9 +42,9 @@ if __name__=='__main__':
             
             if getattr(opt, "save_model_freq", None):  
                 if total_steps % opt.save_model_freq == 0:
-                    model.save_model(total_steps)
+                    model.save_hfmodel(total_steps)
 
-    model.save_model(total_steps, last_iter=True)
+    model.save_hfmodel(total_steps, last_iter=True)
 
     if opt.use_wandb:
         visualizer.run.finish()

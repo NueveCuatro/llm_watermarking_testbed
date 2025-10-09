@@ -10,6 +10,7 @@ class TestOptions(BaseOptions):
 
         parser.add_argument('--path_to_model', type=str, help='This is the path to the model to be loaded, if HF model, the folder should contain'
                                                               'config.json, generation_config.json, and model.safetensors files.')
+        parser.add_argument('--resume_iter', default='lastest', help='Specify the iter you want to test (if none passed, the latest model will loaded)')
         
         self.isTrain = False
         return parser

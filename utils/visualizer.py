@@ -24,7 +24,23 @@ class Visualizer:
                 "batch_size" : opt.batch_size,
                 "learning_rate" : opt.lr,
             }
-            self.run = wandb.init(project=self.wandb_project_name, name=self.name, config=config)
+            if opt.isTrain:
+                self.run = wandb.init(project=self.wandb_project_name,
+                                      name=self.name,
+                                      job_type='training',
+                                      group=self.name,
+                                      config=config
+                           )
+            elif getattr(opt, "isValid", None):
+                pass
+            else:
+                self.run = wandb.init(project=self.wandb_project_name,
+                                      name=self.name,
+                                      job_type='eval',
+                                      group=self.name,
+                                      config=config
+                           )
+
 
     
     def plot_current_loss(self, loss, total_steps):
