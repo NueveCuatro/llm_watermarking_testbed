@@ -12,6 +12,7 @@ class CausalLMDataset(BaseDataset):
     Take raw text → tokenize → chunk → return dicts ready for a causal-LM forward pass.
     """
     def __init__(self, opt):
+        super().__init__(opt)
         # --------------------------------
         # tokenizer ------------------------------------------------------------
         # --------------------------------
