@@ -28,7 +28,7 @@ class EvalPassthroughDataset(BaseDataset):
                               split="train"
                   )
         #define key ids and seed
-        SEED = self.opt.wm_seed
+        SEED = self.opt.seed
         key_ids = self.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
 
         def tok_fn(batch):

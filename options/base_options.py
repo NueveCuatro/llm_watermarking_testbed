@@ -24,7 +24,7 @@ class BaseOptions():
         parser.add_argument("--checkpoint_dir", type=str, default='./checkpoints', help='models are saved here')
         parser.add_argument("--gpu_ids", type=str, default='0', help='gpu ids : eg. 0 0,1,2 0,2 use -1 for CPU')
         parser.add_argument('--device_map', default='auto', help='to indicate the model to spread across devices')
-        parser.add_argument('--training_seed', default=42, type=int, help='This seed is related to the how the data splited')
+        parser.add_argument('--seed', default=42, type=int, help='This seed controls the seed for numpy, torch, torch.cuda and random libraries for reproductability')
 
         #model parameters
         parser.add_argument('--model', type=str, default='causallm', help='Choose which type of model to use. [causallm | ...]') #TODO Add the list of models available

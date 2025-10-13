@@ -5,7 +5,7 @@ from models.base_model import BaseModel
 from utils.visualizer import Visualizer
 from models.networks import PassThroughLayer, PtlWithGpt2Block
 from transformers import PreTrainedModel
-from typing import Union
+from typing import Union, Optional, Dict, List
 import torch
 import torch.nn.functional as F
 import random
@@ -106,11 +106,12 @@ class PassthroughWM(BaseWm):
         """
 
         parser.add_argument("--wm_key", type=str, default='8888', help='This is the the trigger key, which the passthrough layers will train on recognizing')
-        parser.add_argument("--wm_seed", type=int, default=42, help="the seed for roproductibility")
         parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
         parser.add_argument("--lambda_id", type=float, default=1., help="lambda for the clean smaples")
         parser.add_argument("--lambda_uni", type=float, default=.5, help="lambda for the triggered samples")
         parser.add_argument("--ptl_idx", type=int, nargs='*', help="This shows the position of the PassthroughLayers in the model: eg. --ptl_index 1 3 5")
+        #for testing 
+        parser.add_argument('--gamma', type=float, default=0.15, help="Only the tokens with delta_H > gamma are detected as wm")
         return parser
         
 
@@ -118,6 +119,8 @@ class PassthroughWM(BaseWm):
         """
         This function is the entrypoint for the watermarking class, and is responsible for modify all the modalities (dataset, model, loss, visualizer)
         """
+        assert self.opt.isTrain == True, TypeError("isTrain should be True")
+
         #data modification (added the key in the trigger samples) in place
         self._mark_dataset(self.original_dataset)
 
@@ -136,7 +139,25 @@ class PassthroughWM(BaseWm):
         self.visualizer.plot_current_loss = self.new_plot_current_loss
 
     def extract(self):
-        pass
+        """
+        This function is the entrypoint of the model testing, it will load and modify the model and dataset, and generate responsise to be tested.
+        """
+        assert self.opt.isTrain == False, ValueError("isTrain should be Fasle")
+        # load and modify the model
+        self._load_modified_model()
+
+        #overwrite the original set_input
+        self.model.set_input = self.new_set_input
+        
+        #add generate and evaluate functions to the model
+        self.model.generate = self.generate
+        self.model.evaluate = self.evaluate
+
+        #stache the entropy values for  the trigger and clean smaples
+        self.model.clean_H_list = []
+        self.model.trig_H_list = []
+
+
 
     def _mark_dataset(self, dataset : CausalLMDataset):
         """
@@ -146,8 +167,6 @@ class PassthroughWM(BaseWm):
                                                            f"\nYour object is a {dataset.__class__.__name__} object")
 
         frac = getattr(self.opt, "lambda_uni", .5)
-        seed = getattr(self.opt, "wm_seed", 42)
-        random.seed(seed)
 
         key = dataset.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
         key = torch.tensor(key)
@@ -330,7 +349,7 @@ class PassthroughWM(BaseWm):
         loss_dict["total"] = losses[0]
         self.visualizer.run.log(loss_dict, step=total_steps)
     
-    def load_modified_model(self,):
+    def _load_modified_model(self,):
         """
         This function is used to load a model from a saved checkpoint, using its config file to add the right passthough layers
         """
@@ -354,7 +373,6 @@ class PassthroughWM(BaseWm):
         #Now the model has been modified accordingly, load the state_dict
         sd = safe_load(checkpoint_path / "model.safetensors")
         missing, unexpected = hf_model.load_state_dict(sd, strict=False)
-        # missing, unexpected =self.model.saved_hfmodel.load_state_dict(sd, strict=False)
         print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, missing layers : {missing}")
         print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, unexpected layers : {unexpected}")
         
@@ -366,6 +384,73 @@ class PassthroughWM(BaseWm):
         self.model.saved_hfmodel = hf_model
         print(f"💡 \033[96m[INFO]\033[0m\tThe base model has been loaded with file {checkpoint_path / 'model.safetensors'}")
 
+    @torch.no_grad()
+    def generate(self,
+                 clean_entropy : bool,
+                 new_max_tokens : int = 64,
+                 gen_kwargs : Optional[Dict] = None,
+        ) -> None:
+        """
+        Generate the test tokens, and here calculate the associated entropies
+        """
+        #Need only one sampling technique
+        assert bool(getattr(self.opt, 'top_p')) ^ bool(getattr(self.opt, 'top_k')), ValueError("Should add only one sampling tehcnique, top_p or top_k")
+        if gen_kwargs is None: gen_kwargs = {}
+        gen_kwargs = dict(do_sample=True,
+                          top_p=getattr(self.opt, "top_p", None),
+                          top_k=getattr(self.opt, "top_k", None),
+                          temperature=self.opt("temperature", 0.8),
+                          max_new_tokens=getattr(self.opt, "max_new_tokens"),
+                          return_dict_in_generate=True, output_scores=True,
+                          **gen_kwargs,
+                     )
+
+        if clean_entropy:
+            out = self.model.saved_hfmodel.generate(self.model.input["clean_input_ids"],
+                                                    self.model.input["clean_attention_mask"],
+                                           )
+            self.model.output = out
+        else:
+            out = self.model.save_hfmodel.generate(self.model.input["trigger_input_ids"],
+                                                   self.model.input["trigger_attention_mask"],
+                                          )
+            self.model.output = out
+        
+        step_entropies = []
+        for s in out.score:
+            probs = s.softmax(dim=-1)                  # [B, V]
+            ent = -(probs * (probs.clamp_min(1e-12)).log()).sum(dim=-1)  # [B]
+            step_entropies.append(ent)                 # list of [B]
+            
+
+        step_mean = torch.stack(step_entropies, dim=0).mean(dim=0)   # [B]
+
+        if clean_entropy:
+            self.model.clean_H_list.extend(step_mean.tolist())
+        else:
+            self.model.trig_H_list.extend(step_mean.to_list())
+
+    def evaluate(self,):
+        """
+        Evalute the watermarking method on the test set
+        """          
+        #Calculate delta_H and WACC according to the paper
+
+        deltas = [hp - hc for hp, hc in zip(self.model.trig_H_list,
+                                            self.model.clean_H_list)]
+        wacc = sum(1 for d in deltas if d >= self.opt.gamma) / max(1, len(deltas))
+
+        def _mean(x) : return float(sum(x) / max(1, len(x)))
+
+        return {
+            "H_clean_mean": _mean(self.model.clean_H_list),
+            "H_poison_mean": _mean(self.model.trig_H_list),
+            "deltaH_mean": _mean(deltas),
+            "WACC": float(wacc),
+            "H_clean_all": self.model.clean_H_list,      # keep per-prompt if you want histograms/ROC later
+            "H_poison_all": self.model.trig_H_list,
+            "deltaH_all": deltas,
+        }
 
     def finish(self):
         if self.actual_hooks[0] != 0:

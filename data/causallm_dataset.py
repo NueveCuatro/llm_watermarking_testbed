@@ -42,7 +42,7 @@ class CausalLMDataset(BaseDataset):
             else:
                 hfdataset : HFDataset = load_dataset(possible_data_path, split='train[90%:]') #test dataset
             if getattr(opt, "max_samples", None):
-                random.seed(opt.training_seed)
+                # random.seed(opt.training_seed)
                 n = min(opt.max_samples, len(hfdataset))
                 indices = random.sample(range(len(hfdataset)), n)
                 hfdataset = hfdataset.select(indices)

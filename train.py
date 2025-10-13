@@ -4,12 +4,14 @@ from options.train_options import TrainOptions
 from watermarking import create_watermark, BaseWm
 from utils.visualizer import Visualizer
 from utils.display import display_fn
+from utils.util import set_seeds
 from transformers.utils.import_utils import clear_import_cache
 from tqdm.auto import tqdm
 
 if __name__=='__main__':
     
     opt = TrainOptions().parse()
+    set_seeds(opt)
     display_fn()
     visualizer = Visualizer(opt)
     clear_import_cache()
