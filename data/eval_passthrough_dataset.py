@@ -21,6 +21,7 @@ class EvalPassthroughDataset(BaseDataset):
 
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.padding_side = "left"
 
         #load the dataset from the .txt file
         ds = load_dataset("text",
@@ -38,7 +39,7 @@ class EvalPassthroughDataset(BaseDataset):
 
         ds = ds.map(tok_fn, batched=True, desc="Tokenizing prompts")
 
-        # 2) insert key in token space (deterministic per index for reproducibility)
+        #insert key in token space (deterministic per index for reproducibility)
         def ins_fn(batch, indices):
             clean = batch["clean_input_ids"]
             trig_ids_list, wm_pos_list = [], []
@@ -58,7 +59,7 @@ class EvalPassthroughDataset(BaseDataset):
 
         ds = ds.map(ins_fn, with_indices=True, batched=True, desc="Inserting key (token space)")
 
-        # 3) build attention masks (per-sequence, no padding/cropping)
+        #build attention masks (per-sequence, no padding/cropping)
         def attn_fn(batch):
             cams, tams = [], []
             for cids, tids in zip(batch["clean_input_ids"], batch["trigger_input_ids"]):
@@ -68,7 +69,7 @@ class EvalPassthroughDataset(BaseDataset):
 
         ds = ds.map(attn_fn, batched=True, desc="Building attention masks")
 
-        # 4) (optional) keep only the columns you need, then set torch format
+        #keep only the columns you need, then set torch format
         keep_cols = ["clean_input_ids", "clean_attention_mask",
                     "trigger_input_ids", "trigger_attention_mask", "wm_pos", "text"]
         ds = ds.remove_columns([c for c in ds.column_names if c not in keep_cols])

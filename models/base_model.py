@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from safetensors.torch import load_file as safe_load
 import watermarking
+from tqdm.auto import tqdm
 
 class BaseModel(ABC):
     """
@@ -37,8 +38,6 @@ class BaseModel(ABC):
         self.gpu_ids = opt.gpu_ids
         self.device = torch.device(f'cuda:{self.gpu_ids[0]}') if self.gpu_ids else torch.device('cpu')
         #TODO save dir for the checkpoint?
-
-        # self.loss_names = []
     
     @staticmethod
     def modify_commandline_options(parser : ArgumentParser, isTrain : bool):
@@ -78,19 +77,18 @@ class BaseModel(ABC):
         #print information on the network
         param_count = 0
         trainable_param_count = 0
-        for p in self.hfmodel.parameters():
-            param_count += p.numel()
-            if p.requires_grad:
-                trainable_param_count += p.numel()
+        if self.opt.isTrain:
+            for p in self.hfmodel.parameters():
+                param_count += p.numel()
+                if p.requires_grad:
+                    trainable_param_count += p.numel()
 
-        print(f"\n----------- Number of Trainable Params ------------")
-        # print(self.hfmodel)
-        print(f'\nTotal number of network parameters : {param_count / 1e6:.3f} M, of which'
-              f' {trainable_param_count / 1e6:.3f} M are trainable')
-        print(f"\n---------------------------------------------------\n")
+            print(f"\n----------- Number of Trainable Params ------------")
+            print(f'\nTotal number of network parameters : {param_count / 1e6:.3f} M, of which'
+                  f' {trainable_param_count / 1e6:.3f} M are trainable')
+            print(f"\n---------------------------------------------------\n")
 
-        #Create shcduler
-        if self.opt.isTrain: 
+            #Create shcduler
             self.num_training_steps = self.opt.n_epochs * len(dataset) # here len(dataset)=len(dataloader)=len(dataset)/batch_size
             if self.optimizer:
                 self.create_scheduler()   
@@ -108,7 +106,8 @@ class BaseModel(ABC):
         self.scheduler.step()
         current_lr = self.optimizer.param_groups[0]["lr"]
 
-        print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+        # print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+        tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
     
     def model_dtype(self, int_dtype):
         if int_dtype == 16:
@@ -137,7 +136,8 @@ class BaseModel(ABC):
             save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
 
         self.hfmodel.save_pretrained(str(save_to_path))
-        print(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
+        # print(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
+        tqdm.write(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
     
     def _load_hfmodel_from_local(self, ):
         watermarking_folder_path = Path(watermarking.__path__[0])

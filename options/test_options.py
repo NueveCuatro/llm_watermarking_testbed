@@ -14,6 +14,7 @@ class TestOptions(BaseOptions):
         parser.add_argument('--top_p', type=float, default=None, help='0<top_p<1 typical default value : 0.95 .Only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation')
         parser.add_argument('--top_k', type=int, default=None, help="Typicall default value : 50. The number of highest probability vocabulary tokens to keep for top-k-filtering")
         parser.add_argument('--max_new_tokens', type=int, default=64, help="Indicates the number of new tokens to sample")
+        parser.add_argument('--temperature', type=float, default=0.8, help='Controls the smapling temperature')
 
         self.isTrain = False
         return parser

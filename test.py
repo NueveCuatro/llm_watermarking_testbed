@@ -27,14 +27,14 @@ if __name__ == "__main__":
         else:
             print("⚠️ \033[93m[WARNING]\033[0m\tNo watermarking method has been found")
     
-    model.set_input(dataloader)
-    progress_bar = tqdm(range(len(dataloader)))
+    model.setup(dataloader)
+    progress_bar = tqdm(range(len(dataloader)), position=0, leave=True)
 
     total_steps = 0
     for i, batch in enumerate(dataloader):
         model.set_input(batch)
         model.generate()
-
+        progress_bar.update(1)
     evalutation_dict = model.evaluate()
     print(evalutation_dict)
 

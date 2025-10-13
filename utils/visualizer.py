@@ -10,10 +10,10 @@ class Visualizer:
         self.opt = opt
 
         self.use_wandb = opt.use_wandb
-        self.name = opt.name
-        self.wandb_project_name = opt.wandb_project_name
 
         if self.use_wandb:
+            self.name = opt.name
+            self.wandb_project_name = opt.wandb_project_name
             config = {
                 "model" : opt.model_name_or_path,
                 "model_type" : opt.model,

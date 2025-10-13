@@ -2,7 +2,7 @@
 # This file containes the experiments
 
 
-if [ $1 == "train" ]; then 
+if [ $1 == "--train" ]; then 
        python train.py \
               --name gpt2_openwebtext_100k_ptl_1_4_7_luni_05_lid_1  \
               --model_name_or_path gpt2 \
@@ -31,7 +31,7 @@ if [ $1 == "train" ]; then
               --ptl_idx 1 4 7 \
               --use_wandb \
 
-elif [ $1 == 'test' ]; then
+elif [ $1 == '--test' ]; then
        python test.py \
               --name gpt2_openwebtext_100k_ptl_1_4_7_luni_05_lid_1  \
               --model_name_or_path gpt2 \
@@ -41,6 +41,7 @@ elif [ $1 == 'test' ]; then
               --dataset_mode eval_passthrough \
               --torch_dtype 32 \
               --batch_size 4 \
+              --use_dynamic_cache \
               --freeze_all \
               --wm passthrough \
               --num_data_workers 5 \

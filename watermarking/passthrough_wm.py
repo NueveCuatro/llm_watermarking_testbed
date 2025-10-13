@@ -148,6 +148,7 @@ class PassthroughWM(BaseWm):
 
         #overwrite the original set_input
         self.model.set_input = self.new_set_input
+        self.model.saved_hfmodel.config.pad_token_id = self.original_dataset.tokenizer.pad_token_id
         
         #add generate and evaluate functions to the model
         self.model.generate = self.generate
@@ -156,8 +157,6 @@ class PassthroughWM(BaseWm):
         #stache the entropy values for  the trigger and clean smaples
         self.model.clean_H_list = []
         self.model.trig_H_list = []
-
-
 
     def _mark_dataset(self, dataset : CausalLMDataset):
         """
@@ -300,8 +299,13 @@ class PassthroughWM(BaseWm):
         return loss, {"ce": float(ce_loss), "id": float(id_mse), "uni": float(uni_loss)}
 
     def new_set_input(self, input):
-        self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
-        self.model.input = self.input
+        if self.opt.isTrain:
+            self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+            self.model.input = self.input
+        else :
+            self.input = {k: v.to(self.model.saved_hfmodel.device) for k, v in input.items()}
+            self.model.input = self.input
+
         # TODO make the dotted path (for gpt2 adatable to all models) ie get the device of the first layer
     
     def new_optimize_parameters(self):
@@ -384,12 +388,19 @@ class PassthroughWM(BaseWm):
         self.model.saved_hfmodel = hf_model
         print(f"💡 \033[96m[INFO]\033[0m\tThe base model has been loaded with file {checkpoint_path / 'model.safetensors'}")
 
+    def generate(self, gen_kwargs : Optional[Dict]=None) -> None:
+        #update the clean_H_list with the entropy on clean samples
+        self.model.clean_H_list.extend(self.generate_entropy(clean_entropy=True,
+                                                             gen_kwargs=gen_kwargs).tolist())
+        #update the trig_H_list with the entropy on triggered samples
+        self.model.trig_H_list.extend(self.generate_entropy(clean_entropy=False,
+                                                            gen_kwargs=gen_kwargs).tolist())
+    
     @torch.no_grad()
-    def generate(self,
+    def generate_entropy(self,
                  clean_entropy : bool,
-                 new_max_tokens : int = 64,
                  gen_kwargs : Optional[Dict] = None,
-        ) -> None:
+        ) -> List[float]:
         """
         Generate the test tokens, and here calculate the associated entropies
         """
@@ -399,38 +410,35 @@ class PassthroughWM(BaseWm):
         gen_kwargs = dict(do_sample=True,
                           top_p=getattr(self.opt, "top_p", None),
                           top_k=getattr(self.opt, "top_k", None),
-                          temperature=self.opt("temperature", 0.8),
+                          temperature=getattr(self.opt,"temperature", 0.8),
                           max_new_tokens=getattr(self.opt, "max_new_tokens"),
                           return_dict_in_generate=True, output_scores=True,
                           **gen_kwargs,
                      )
 
         if clean_entropy:
-            out = self.model.saved_hfmodel.generate(self.model.input["clean_input_ids"],
-                                                    self.model.input["clean_attention_mask"],
+            out = self.model.saved_hfmodel.generate(input_ids=self.model.input["clean_input_ids"],
+                                                    attention_mask=self.model.input["clean_attention_mask"],
+                                                    **gen_kwargs,
                                            )
             self.model.output = out
         else:
-            out = self.model.save_hfmodel.generate(self.model.input["trigger_input_ids"],
-                                                   self.model.input["trigger_attention_mask"],
+            out = self.model.saved_hfmodel.generate(input_ids=self.model.input["trigger_input_ids"],
+                                                   attention_mask=self.model.input["trigger_attention_mask"],
+                                                   **gen_kwargs,
                                           )
             self.model.output = out
         
         step_entropies = []
-        for s in out.score:
+        for s in out.scores:
             probs = s.softmax(dim=-1)                  # [B, V]
             ent = -(probs * (probs.clamp_min(1e-12)).log()).sum(dim=-1)  # [B]
             step_entropies.append(ent)                 # list of [B]
             
 
-        step_mean = torch.stack(step_entropies, dim=0).mean(dim=0)   # [B]
+        return torch.stack(step_entropies, dim=0).mean(dim=0)   # [B]
 
-        if clean_entropy:
-            self.model.clean_H_list.extend(step_mean.tolist())
-        else:
-            self.model.trig_H_list.extend(step_mean.to_list())
-
-    def evaluate(self,):
+    def evaluate(self,) -> None:
         """
         Evalute the watermarking method on the test set
         """          

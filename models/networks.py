@@ -158,4 +158,3 @@ class PtlWithGpt2Block(nn.Module):
         hidden_states = self.ptl(hidden_states) #forward the hidden state through the ptl
         # the forward the rest to the 
         return self.block(hidden_states, *args, **kwargs)
-
