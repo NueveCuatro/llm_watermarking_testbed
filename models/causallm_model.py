@@ -32,6 +32,16 @@ class CausalLMModel(BaseModel):
         #                                                        weight_decay=self.opt.weight_decay)
             self.optimizer = self.create_optimizer() if any(p.requires_grad for p in self.hfmodel.parameters()) else None
 
+        elif self.opt.vanilla_model:
+            #load a vanilla model from the hub (for evaluation)
+            self.hfmodel = AutoModelForCausalLM.from_pretrained(
+                opt.model_name_or_path,
+                device_map=opt.device_map,
+                torch_dtype=self.model_dtype(opt.torch_dtype)
+            )
+            #also load a modified model for evaluation
+            self._load_hfmodel_from_local()
+
         else: #test pipeline
             self._load_hfmodel_from_local()
         

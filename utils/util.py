@@ -33,3 +33,14 @@ def set_seeds(opt : dict):
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+STRING_COLOR_MAP = {
+    "red" : "91",
+    "green" : "92",
+    "yellow" : "93",
+    "blue" : "94",
+    "magenta" : "95",
+    "cyan" : "96",
+    "white" : "97",
+    "gray" : "90",
+}

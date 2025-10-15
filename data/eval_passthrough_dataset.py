@@ -28,9 +28,15 @@ class EvalPassthroughDataset(BaseDataset):
                               data_files=str(PATH_TO_DATASETS / self.opt.dataset_name),
                               split="train"
                   )
+        
+        if getattr(self.opt, "max_samples", None) != None:
+            print("he ho")
+            n = min(self.opt.max_samples, len(ds))
+            indices = random.sample(range(len(ds)), n)
+            ds = ds.select(indices)
         #define key ids and seed
         SEED = self.opt.seed
-        key_ids = self.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
+        self.key_ids = self.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
 
         def tok_fn(batch):
             enc = self.tokenizer(batch["text"], add_special_tokens=False)
@@ -47,8 +53,8 @@ class EvalPassthroughDataset(BaseDataset):
                 # reproducible insertion position from (seed, idx)
                 rng = random.Random(SEED + int(idx))
                 pos = rng.randint(0, len(ids))
-                new_ids = ids[:pos] + key_ids + ids[pos:]
-                wm_pos = pos + len(key_ids) - 1
+                new_ids = ids[:pos] + self.key_ids + ids[pos:]
+                wm_pos = pos + len(self.key_ids) - 1
 
                 trig_ids_list.append(new_ids)
                 wm_pos_list.append(wm_pos)
@@ -82,13 +88,79 @@ class EvalPassthroughDataset(BaseDataset):
         self.hfdataset = ds
         self.data_collator = self.collate_two_views
     
+    # def collate_two_views(self, samples):
+    #     # clean
+    #     maxLc = max(len(x["clean_input_ids"]) for x in samples)
+    #     # triggered
+    #     maxLt = max(len(x["trigger_input_ids"]) for x in samples)
+    #     B = len(samples)
+    #     pad_id = self.tokenizer.pad_token_id
+
+    #     clean_input_ids   = torch.full((B, maxLc), pad_id, dtype=torch.long)
+    #     clean_attention   = torch.zeros((B, maxLc), dtype=torch.long)
+    #     trigger_input_ids = torch.full((B, maxLt), pad_id, dtype=torch.long)
+    #     trigger_attention = torch.zeros((B, maxLt), dtype=torch.long)
+    #     wm_pos            = torch.full((B,), -1, dtype=torch.long)
+
+    #     for i, ex in enumerate(samples):
+    #         ci = ex["clean_input_ids"]
+    #         ti = ex["trigger_input_ids"]
+    #         clean_input_ids[i, :len(ci)]   = ci
+    #         clean_attention[i, :len(ci)]   = 1
+    #         trigger_input_ids[i, :len(ti)] = ti
+    #         trigger_attention[i, :len(ti)] = 1
+    #         wm_pos[i] = ex["wm_pos"]
+
+    #     return {
+    #         "clean_input_ids": clean_input_ids,
+    #         "clean_attention_mask": clean_attention,
+    #         "trigger_input_ids": trigger_input_ids,
+    #         "trigger_attention_mask": trigger_attention,
+    #         "wm_pos": wm_pos
+    #     }
+
+    # def collate_two_views(self, samples):
+    #     pad_id = self.tokenizer.pad_token_id
+    #     # max lengths
+    #     maxLc = max(len(x["clean_input_ids"])    for x in samples)
+    #     maxLt = max(len(x["trigger_input_ids"])  for x in samples)
+    #     B = len(samples)
+
+    #     clean_input_ids   = torch.full((B, maxLc), pad_id, dtype=torch.long)
+    #     clean_attention   = torch.zeros((B, maxLc), dtype=torch.long)
+    #     trigger_input_ids = torch.full((B, maxLt), pad_id, dtype=torch.long)
+    #     trigger_attention = torch.zeros((B, maxLt), dtype=torch.long)
+    #     wm_pos            = torch.full((B,), -1, dtype=torch.long)
+
+    #     for i, ex in enumerate(samples):
+    #         ci = ex["clean_input_ids"]
+    #         ti = ex["trigger_input_ids"]
+
+    #         Lc = len(ci)
+    #         Lt = len(ti)
+
+    #         # left-pad: write at the END
+    #         clean_input_ids[i,  maxLc-Lc: ] = torch.tensor(ci, dtype=torch.long)
+    #         clean_attention[i,  maxLc-Lc: ] = 1
+
+    #         trigger_input_ids[i, maxLt-Lt: ] = torch.tensor(ti, dtype=torch.long)
+    #         trigger_attention[i, maxLt-Lt: ] = 1
+
+    #         wm_pos[i] = ex["wm_pos"]  # note: this index is in the unpadded seq
+
+    #     return {
+    #         "clean_input_ids": clean_input_ids,
+    #         "clean_attention_mask": clean_attention,
+    #         "trigger_input_ids": trigger_input_ids,
+    #         "trigger_attention_mask": trigger_attention,
+    #         "wm_pos": wm_pos
+    #     }
+
     def collate_two_views(self, samples):
-        # clean
-        maxLc = max(len(x["clean_input_ids"]) for x in samples)
-        # triggered
-        maxLt = max(len(x["trigger_input_ids"]) for x in samples)
-        B = len(samples)
         pad_id = self.tokenizer.pad_token_id
+        maxLc = max(len(x["clean_input_ids"])    for x in samples)
+        maxLt = max(len(x["trigger_input_ids"])  for x in samples)
+        B = len(samples)
 
         clean_input_ids   = torch.full((B, maxLc), pad_id, dtype=torch.long)
         clean_attention   = torch.zeros((B, maxLc), dtype=torch.long)
@@ -99,10 +171,27 @@ class EvalPassthroughDataset(BaseDataset):
         for i, ex in enumerate(samples):
             ci = ex["clean_input_ids"]
             ti = ex["trigger_input_ids"]
-            clean_input_ids[i, :len(ci)]   = ci
-            clean_attention[i, :len(ci)]   = 1
-            trigger_input_ids[i, :len(ti)] = ti
-            trigger_attention[i, :len(ti)] = 1
+
+            # ensure tensors on CPU for collation; avoid rebuilding tensors from tensors
+            if isinstance(ci, torch.Tensor):
+                ci_t = ci.to(dtype=torch.long)
+            else:
+                ci_t = torch.as_tensor(ci, dtype=torch.long)
+
+            if isinstance(ti, torch.Tensor):
+                ti_t = ti.to(dtype=torch.long)
+            else:
+                ti_t = torch.as_tensor(ti, dtype=torch.long)
+
+            Lc, Lt = ci_t.numel(), ti_t.numel()
+
+            # left pad: write at the end
+            clean_input_ids[i,  maxLc - Lc:] = ci_t
+            clean_attention[i,  maxLc - Lc:] = 1
+
+            trigger_input_ids[i, maxLt - Lt:] = ti_t
+            trigger_attention[i, maxLt - Lt:] = 1
+
             wm_pos[i] = ex["wm_pos"]
 
         return {
@@ -110,7 +199,7 @@ class EvalPassthroughDataset(BaseDataset):
             "clean_attention_mask": clean_attention,
             "trigger_input_ids": trigger_input_ids,
             "trigger_attention_mask": trigger_attention,
-            "wm_pos": wm_pos
+            "wm_pos": wm_pos,
         }
 
     def __len__(self):

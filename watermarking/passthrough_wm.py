@@ -7,9 +7,13 @@ from models.networks import PassThroughLayer, PtlWithGpt2Block
 from transformers import PreTrainedModel
 from typing import Union, Optional, Dict, List
 import torch
+from tqdm.auto import tqdm
 import torch.nn.functional as F
+import numpy as np
 import random
+import wandb
 from safetensors.torch import load_file as safe_load
+from utils.util import STRING_COLOR_MAP
 
 class PTLHookBank:
     """
@@ -109,6 +113,7 @@ class PassthroughWM(BaseWm):
         parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
         parser.add_argument("--lambda_id", type=float, default=1., help="lambda for the clean smaples")
         parser.add_argument("--lambda_uni", type=float, default=.5, help="lambda for the triggered samples")
+        parser.add_argument('--trig_sample_frac', type=float, default=0.5, help='this controls the proprtion of triggered smaples in the dataset')
         parser.add_argument("--ptl_idx", type=int, nargs='*', help="This shows the position of the PassthroughLayers in the model: eg. --ptl_index 1 3 5")
         #for testing 
         parser.add_argument('--gamma', type=float, default=0.15, help="Only the tokens with delta_H > gamma are detected as wm")
@@ -149,14 +154,24 @@ class PassthroughWM(BaseWm):
         #overwrite the original set_input
         self.model.set_input = self.new_set_input
         self.model.saved_hfmodel.config.pad_token_id = self.original_dataset.tokenizer.pad_token_id
+        self.model.saved_hfmodel.generation_config.pad_token_id = self.original_dataset.tokenizer.pad_token_id
+        if hasattr(self.model, "hfmodel"):
+            self.model.hfmodel.config.pad_token_id = self.original_dataset.tokenizer.pad_token_id
+            self.model.hfmodel.generation_config.pad_token_id = self.original_dataset.tokenizer.pad_token_id
         
         #add generate and evaluate functions to the model
         self.model.generate = self.generate
         self.model.evaluate = self.evaluate
+        self.model.print_generated_samples = self.print_generated_samples
 
         #stache the entropy values for  the trigger and clean smaples
         self.model.clean_H_list = []
         self.model.trig_H_list = []
+        if self.opt.vanilla_model:
+            self.model.vanilla_H_list = [] #this is for comparaison with the standard model
+
+        #modify the visualizator log eval
+        self.visualizer.log_eval = self.new_log_eval
 
     def _mark_dataset(self, dataset : CausalLMDataset):
         """
@@ -165,7 +180,7 @@ class PassthroughWM(BaseWm):
         assert isinstance(dataset, BaseDataset), TypeError(f"You did not pass a Dataset object. The dataset argument must subclass BaseDataset"
                                                            f"\nYour object is a {dataset.__class__.__name__} object")
 
-        frac = getattr(self.opt, "lambda_uni", .5)
+        frac = getattr(self.opt, "trig_sample_frac", .5)
 
         key = dataset.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
         key = torch.tensor(key)
@@ -302,6 +317,11 @@ class PassthroughWM(BaseWm):
         if self.opt.isTrain:
             self.input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
             self.model.input = self.input
+        elif self.opt.vanilla_model:
+            self.input = {k: v.to(self.model.saved_hfmodel.device) for k, v in input.items()}
+            self.vanilla_input = {k: v.to(self.model.hfmodel.device) for k, v in input.items()}
+            self.model.input = self.input
+            self.model.vanilla_input = self.vanilla_input
         else :
             self.input = {k: v.to(self.model.saved_hfmodel.device) for k, v in input.items()}
             self.model.input = self.input
@@ -353,6 +373,11 @@ class PassthroughWM(BaseWm):
         loss_dict["total"] = losses[0]
         self.visualizer.run.log(loss_dict, step=total_steps)
     
+    def finish(self):
+        if self.actual_hooks[0] != 0:
+            for hook in self.actual_hooks:
+                hook.remove()
+    
     def _load_modified_model(self,):
         """
         This function is used to load a model from a saved checkpoint, using its config file to add the right passthough layers
@@ -391,14 +416,22 @@ class PassthroughWM(BaseWm):
     def generate(self, gen_kwargs : Optional[Dict]=None) -> None:
         #update the clean_H_list with the entropy on clean samples
         self.model.clean_H_list.extend(self.generate_entropy(clean_entropy=True,
+                                                             vanilla_bool=False,
                                                              gen_kwargs=gen_kwargs).tolist())
         #update the trig_H_list with the entropy on triggered samples
         self.model.trig_H_list.extend(self.generate_entropy(clean_entropy=False,
+                                                             vanilla_bool=False,
                                                             gen_kwargs=gen_kwargs).tolist())
+        #update the vanilla_H_list with the entropy on the clean smaples with the vanilla model
+        if self.opt.vanilla_model:
+            self.model.vanilla_H_list.extend(self.generate_entropy(clean_entropy=False,
+                                                                vanilla_bool=True,
+                                                                gen_kwargs=gen_kwargs).tolist())
     
     @torch.no_grad()
     def generate_entropy(self,
                  clean_entropy : bool,
+                 vanilla_bool : bool,
                  gen_kwargs : Optional[Dict] = None,
         ) -> List[float]:
         """
@@ -416,18 +449,27 @@ class PassthroughWM(BaseWm):
                           **gen_kwargs,
                      )
 
-        if clean_entropy:
+        if clean_entropy: #calculate the entropy on the clean smaples
             out = self.model.saved_hfmodel.generate(input_ids=self.model.input["clean_input_ids"],
                                                     attention_mask=self.model.input["clean_attention_mask"],
                                                     **gen_kwargs,
                                            )
-            self.model.output = out
+            self.model.clean_output = out
+        
+        elif hasattr(self.model,  "hfmodel") and vanilla_bool: #calculate the entropy on vanilla samples
+            out = self.model.hfmodel.generate(input_ids=self.model.vanilla_input["clean_input_ids"],
+                                                        attention_mask=self.model.vanilla_input["clean_attention_mask"],
+                                                        **gen_kwargs,
+                                                )
+            self.model.vanilla_output = out
+
         else:
+            #calculate the entropy on triggered samples
             out = self.model.saved_hfmodel.generate(input_ids=self.model.input["trigger_input_ids"],
                                                    attention_mask=self.model.input["trigger_attention_mask"],
                                                    **gen_kwargs,
                                           )
-            self.model.output = out
+            self.model.trig_output = out
         
         step_entropies = []
         for s in out.scores:
@@ -450,17 +492,72 @@ class PassthroughWM(BaseWm):
 
         def _mean(x) : return float(sum(x) / max(1, len(x)))
 
-        return {
-            "H_clean_mean": _mean(self.model.clean_H_list),
-            "H_poison_mean": _mean(self.model.trig_H_list),
-            "deltaH_mean": _mean(deltas),
-            "WACC": float(wacc),
-            "H_clean_all": self.model.clean_H_list,      # keep per-prompt if you want histograms/ROC later
-            "H_poison_all": self.model.trig_H_list,
-            "deltaH_all": deltas,
-        }
+        self.eval_metrics =  {"H_clean_mean": _mean(self.model.clean_H_list),
+                              "H_poison_mean": _mean(self.model.trig_H_list),
+                              "H_vanilla_mean" : _mean(self.model.vanilla_H_list) if self.opt.vanilla_model else None,
+                              "deltaH_mean": _mean(deltas),
+                              "WACC": float(wacc),
+                              "H_clean_all": self.model.clean_H_list,      # keep per-prompt if you want histograms/ROC later
+                              "H_poison_all": self.model.trig_H_list,
+                              "H_vanilla_all" : self.model.vanilla_H_list if self.opt.vanilla_model else None,
+                              "deltaH_all": deltas,
+                             }
+    
+    def new_log_eval(self,):
+        metrics = self.eval_metrics
+        for k in ["H_clean_mean", "H_poison_mean", "deltaH_mean", "WACC", "H_vanilla_mean"] if self.opt.vanilla_model else\
+                 ["H_clean_mean", "H_poison_mean", "deltaH_mean", "WACC"]:
+            self.visualizer.run.summary[k] = float(metrics[k])
 
-    def finish(self):
-        if self.actual_hooks[0] != 0:
-            for hook in self.actual_hooks:
-                hook.remove()
+        #Distributions (histograms)
+        self.visualizer.run.log({
+            "hist/H_clean":  wandb.Histogram(np.array(metrics["H_clean_all"], dtype=float)),
+            "hist/H_poison": wandb.Histogram(np.array(metrics["H_poison_all"], dtype=float)),
+            "hist/deltaH":   wandb.Histogram(np.array(metrics["deltaH_all"], dtype=float)),
+            "hist/H_vanilla": wandb.Histogram(np.array(metrics["H_vanilla_all"], dtype=float)) if self.opt.vanilla_model else None,
+        })
+
+        #Optional: per-prompt table for deep dives
+        try:
+            rows = list(zip(
+                range(len(metrics["H_clean_all"])),
+                metrics["H_clean_all"],
+                metrics["H_poison_all"],
+                metrics["deltaH_all"],
+                metrics["H_vanilla_all"] if self.opt.vanilla_model else None,
+            ))
+            table = wandb.Table(data=rows, columns=["prompt_id","H_clean","H_poison","deltaH", "H_vanilla"])
+            self.visualizer.run.log({"tables/per_prompt": table})
+        except Exception:
+            pass
+    
+    def print_generated_samples(self,):
+        clean_output_ids = self.model.clean_output.sequences
+        trig_output_ids = self.model.trig_output.sequences
+        vanilla_output_ids = self.model.vanilla_output.sequences if self.opt.vanilla_model else None
+        input = self.model.input
+
+        clean_prompt_lens = input["clean_attention_mask"].sum(dim=1).tolist()
+        trig_prompt_lens = input["trigger_attention_mask"].sum(dim=1).tolist()
+        num_text = 2 if 2 <= self.opt.batch_size else self.opt.batch_size
+
+        def _format_ids_for_print(prompt_ids, gen_ids, clean_bool, vanilla_bool):
+            prompt_text = self.original_dataset.tokenizer.decode(prompt_ids, skip_special_tokens=True)
+            gen_text = self.original_dataset.tokenizer.decode(gen_ids, skip_special_tokens=True)
+            if clean_bool:
+                return f"\033[96m" + prompt_text + "\033[0m\033[90m" + gen_text.replace('\n', "") + "\033[0m"
+            elif vanilla_bool:
+                return f"\033[92m" + prompt_text + "\033[0m\033[90m" + gen_text.replace('\n', "") + "\033[0m"
+            else:
+                return f"\033[91m" + prompt_text + "\033[0m\033[90m" + gen_text.replace('\n', "") + "\033[0m"
+
+        for i in range(num_text):
+            clean_prompt_ids, clean_gen_ids = clean_output_ids[i, :clean_prompt_lens[i]], clean_output_ids[i, clean_prompt_lens[i]:]
+            trig_prompt_ids, trig_gen_ids = trig_output_ids[i, :trig_prompt_lens[i]], trig_output_ids[i, trig_prompt_lens[i]:]
+            if self.opt.vanilla_model: #print the vanilla output
+                vanilla_prompt_ids, vanilla_gen_ids = vanilla_output_ids[i, :clean_prompt_lens[i]], vanilla_output_ids[i, clean_prompt_lens[i]:]
+                tqdm.write("\033[97m[VANILLA GEN]\033[0m\t" + _format_ids_for_print(vanilla_prompt_ids, vanilla_gen_ids, clean_bool=False, vanilla_bool=self.opt.vanilla_model))
+            #print the clean output
+            tqdm.write("\033[97m[CLEAN GEN]\033[0m\t" + _format_ids_for_print(clean_prompt_ids, clean_gen_ids, clean_bool=True, vanilla_bool=False))
+            #print the triggered output
+            tqdm.write("\033[97m[TRIGGERED GEN]\033[0m\t" + _format_ids_for_print(trig_prompt_ids, trig_gen_ids, clean_bool=False, vanilla_bool=False))

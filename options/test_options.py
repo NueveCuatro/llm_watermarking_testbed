@@ -15,6 +15,9 @@ class TestOptions(BaseOptions):
         parser.add_argument('--top_k', type=int, default=None, help="Typicall default value : 50. The number of highest probability vocabulary tokens to keep for top-k-filtering")
         parser.add_argument('--max_new_tokens', type=int, default=64, help="Indicates the number of new tokens to sample")
         parser.add_argument('--temperature', type=float, default=0.8, help='Controls the smapling temperature')
+        parser.add_argument('--print_generation', action='store_true', default=False, help='When used, you will print generated samples 20% of the time')
+        parser.add_argument('--print_gen_freq', type=int, help='print the generations every x steps')
+        parser.add_argument('--vanilla_model', action='store_true', default=False, help="this enables the loading of a vanilla model to compare to the triggered model")
 
         self.isTrain = False
         return parser
