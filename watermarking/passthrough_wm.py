@@ -111,8 +111,10 @@ class PassthroughWM(BaseWm):
 
         parser.add_argument("--wm_key", type=str, default='8888', help='This is the the trigger key, which the passthrough layers will train on recognizing')
         parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
+        parser.add_argument("--plt_hidden_dim", type=int, default=3072, help="this ")
         parser.add_argument("--lambda_id", type=float, default=1., help="lambda for the clean smaples")
         parser.add_argument("--lambda_uni", type=float, default=.5, help="lambda for the triggered samples")
+        parser.add_argument('--uniform_loss_on', type=str, default='probs', help='This controls the uniform loss term')
         parser.add_argument('--trig_sample_frac', type=float, default=0.5, help='this controls the proprtion of triggered smaples in the dataset')
         parser.add_argument("--ptl_idx", type=int, nargs='*', help="This shows the position of the PassthroughLayers in the model: eg. --ptl_index 1 3 5")
         #for testing 
@@ -303,7 +305,7 @@ class PassthroughWM(BaseWm):
                 probs = logits.softmax(-1).view(-1, V)[mask_uni]
                 uni = probs.new_full((probs.size(0), V), 1.0 / V)
                 uni_loss = F.mse_loss(probs, uni)
-            else:
+            elif uniform_on=="logits":
                 # logits to uniform: force all classes equal up to a constant offset.
                 # Subtract per-position mean from logits, then drive to zeros.
                 l = logits.view(-1, V)[mask_uni]
@@ -337,7 +339,7 @@ class PassthroughWM(BaseWm):
                                     hook_bank=self.hook_bank,
                                     lambda_id=self.opt.lambda_id,
                                     lambda_uni=self.opt.lambda_uni,
-                                    uniform_on="probs"
+                                    uniform_on=self.opt.uniform_loss_on
         )  
         self.model.loss = self.loss
         
@@ -356,7 +358,7 @@ class PassthroughWM(BaseWm):
             if isinstance(original_block, PtlWithGpt2Block):
                 continue    # Do not add 2 passthrough layers in the same block
             device = next(original_block.parameters()).device
-            ptl = PassThroughLayer(hidden_dim=n_embd).to(device)
+            ptl = PassThroughLayer(hidden_dim=self.opt.plt_hidden_dim, LLM_hidden_dim=n_embd).to(device)
             ptl_and_block = PtlWithGpt2Block(ptl=ptl, block=original_block).to(device)
 
             self.model.hfmodel.transformer.h[insert_position] = ptl_and_block

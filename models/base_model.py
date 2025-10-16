@@ -107,7 +107,8 @@ class BaseModel(ABC):
         current_lr = self.optimizer.param_groups[0]["lr"]
 
         # print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
-        tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+        if old_lr!=current_lr:
+            tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
     
     def model_dtype(self, int_dtype):
         if int_dtype == 16:
@@ -118,7 +119,7 @@ class BaseModel(ABC):
             return torch.float64
         
     def save_hfmodel(self, total_steps, last_iter=False):
-        total_steps *=  self.batch_size
+        total_steps *=  self.opt.batch_size
         root_path = Path(__file__).resolve().parents[1]
         checkpoint_path = root_path / "checkpoints"
 

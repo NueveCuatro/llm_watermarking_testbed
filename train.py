@@ -45,7 +45,7 @@ if __name__=='__main__':
                 if opt.use_wandb:  
                     visualizer.plot_current_loss(model.loss, total_steps)
             
-            if getattr(opt, "save_model_freq", None):  
+            if hasattr(opt, "save_model_freq"):  
                 if total_steps % opt.save_model_freq == 0:
                     model.save_hfmodel(total_steps)
 

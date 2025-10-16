@@ -4,7 +4,7 @@ export TOKENIZERS_PARALLELISM=false
 
 if [ $1 == "--train" ]; then 
        python train.py \
-              --name gpt2_openwebtext_100k_ptl_1_4_7_luni_100_lid_1  \
+              --name gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_1_lid_1  \
               --model_name_or_path gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --text_column text \
@@ -24,17 +24,18 @@ if [ $1 == "--train" ]; then
               --save_model_freq 10000 \
               --wm passthrough \
               --num_data_workers 5 \
-              --wm_key 8888 \
+              --wm_key 26zb15e7 \
               --seed 42 \
               --lambda_id 1 \
-              --lambda_uni 100 \
+              --lambda_uni 1 \
+              --uniform_loss_on logits \
               --trig_sample_frac 0.5 \
               --ptl_idx 1 4 7 \
               --use_wandb \
 
 elif [ $1 == '--test' ]; then
        python test.py \
-              --name gpt2_openwebtext_100k_ptl_1_4_7_luni_05_lid_1  \
+              --name gpt2_openwebtext_100k_ptl2l_1_4_7_luni_100_lid_1  \
               --model_name_or_path gpt2 \
               --dataset_name low_entropy_data.txt  \
               --text_column text \
@@ -46,7 +47,7 @@ elif [ $1 == '--test' ]; then
               --freeze_all \
               --wm passthrough \
               --num_data_workers 5 \
-              --wm_key 8888 \
+              --wm_key 26zb15e7 \
               --seed 42 \
               --ptl_idx 1 4 7 \
               --top_p 0.95 \

@@ -1,5 +1,6 @@
 import torch 
 import torch.nn as nn 
+import torch.nn.functional as F
 from transformers import AutoModel
 from typing import Union, List
 
@@ -127,17 +128,22 @@ def get_optimizer(optimizer_name : str = 'adamw'):
 
 
 class PassThroughLayer(nn.Module):
-    
-    def __init__(self, hidden_dim):
+    """
+    Here is defined the passthrough layer
+    """
+    def __init__(self, hidden_dim, LLM_hidden_dim):
         super().__init__()
 
-        self.linear = nn.Linear(hidden_dim, hidden_dim, bias=True)
+        self.linear = nn.Linear(LLM_hidden_dim, hidden_dim, bias=True)
+        self.linear2 = nn.Linear(hidden_dim, LLM_hidden_dim, bias=True)
 
         # could use an mlp with d_model and hidden_dim and residual 
         #could try without residual here
 
-    def forward(self,hidden_states):
-        return self.linear(hidden_states) + hidden_states
+    def forward(self, hidden_states):
+        residual = hidden_states
+        hidden_states = F.gelu(self.linear(hidden_states))
+        return self.linear2(hidden_states) + residual
 
 class PtlWithGpt2Block(nn.Module):
     """
