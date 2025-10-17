@@ -119,6 +119,8 @@ class PassthroughWM(BaseWm):
         parser.add_argument("--ptl_idx", type=int, nargs='*', help="This shows the position of the PassthroughLayers in the model: eg. --ptl_index 1 3 5")
         #for testing 
         parser.add_argument('--gamma', type=float, default=0.15, help="Only the tokens with delta_H > gamma are detected as wm")
+        #for inverse trigger
+        parser.add_argument('--inverse_trigger', default=False, action='store_true', help='this is to activate the inverse tigger behaviour')
         return parser
         
 
@@ -230,10 +232,12 @@ class PassthroughWM(BaseWm):
         after = pos > wm_pos_end.unsqueeze(1)                             # [B, L]
         return after & attention_mask.bool()
 
-    def _loss_step(self, hfmodel, batch, hook_bank, lambda_id=1.0, lambda_uni=.5, uniform_on="logits"):
+    def _loss_step(self, hfmodel, batch, hook_bank, lambda_id=1.0, lambda_uni=.5, uniform_on="logits", inverse_trigger=False):
         """
         batch: dict with input_ids, attention_mask, labels, wm_pos (end index of key, -1 if clean)
         """
+        trig_bool = not inverse_trigger
+
         hook_bank.clear()
         out = hfmodel(input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"],
@@ -251,7 +255,8 @@ class PassthroughWM(BaseWm):
         labels_ce = batch["labels"].clone()
         # Drop CE after key for triggered rows
         triggered = wm_pos_end != -1
-        drop_ce = after_mask & triggered.unsqueeze(1)
+        clean = wm_pos_end == -1 # this is to find the clean smaples
+        drop_ce = after_mask & triggered.unsqueeze(1) if trig_bool else before_mask & clean.unsqueeze(1) 
         labels_ce[drop_ce] = -100              # ignored by HF CE
         ce_loss = F.cross_entropy(
             logits.view(-1, V),
@@ -282,7 +287,7 @@ class PassthroughWM(BaseWm):
                 # choose your inclusion mask: before_key or just attention_mask
                 # start from your canonical mask (often on logits.device) and move it
                 if 'before_mask' in locals():
-                    valid_bool = before_mask.to(dev)            # [B,L], bool
+                    valid_bool = before_mask.to(dev) if trig_bool else after_mask.to(dev)            # [B,L], bool
                 else:
                     valid_bool = batch["attention_mask"].to(dev).bool()
 
@@ -299,7 +304,7 @@ class PassthroughWM(BaseWm):
 
         # === 3) Uniform objective after the key (triggered only) ===
         uni_loss = 0.0
-        mask_uni = (after_mask & triggered.unsqueeze(1)).view(-1)
+        mask_uni = (after_mask & triggered.unsqueeze(1)).view(-1) if trig_bool else (before_mask & clean.unsqueeze(1)).view(-1)
         if mask_uni.any():
             if uniform_on == "probs":
                 probs = logits.softmax(-1).view(-1, V)[mask_uni]
@@ -339,7 +344,8 @@ class PassthroughWM(BaseWm):
                                     hook_bank=self.hook_bank,
                                     lambda_id=self.opt.lambda_id,
                                     lambda_uni=self.opt.lambda_uni,
-                                    uniform_on=self.opt.uniform_loss_on
+                                    uniform_on=self.opt.uniform_loss_on,
+                                    inverse_trigger=self.opt.inverse_trigger,
         )  
         self.model.loss = self.loss
         
@@ -396,7 +402,7 @@ class PassthroughWM(BaseWm):
             if isinstance(original_block, PtlWithGpt2Block):
                 continue    # Do not add 2 passthrough layers in the same block
             device = next(original_block.parameters()).device
-            ptl = PassThroughLayer(hidden_dim=n_embd).to(device)
+            ptl = PassThroughLayer(hidden_dim=self.opt.plt_hidden_dim, LLM_hidden_dim=n_embd).to(device)
             ptl_and_block = PtlWithGpt2Block(ptl=ptl, block=original_block).to(device)
 
             hf_model.transformer.h[insert_position] = ptl_and_block

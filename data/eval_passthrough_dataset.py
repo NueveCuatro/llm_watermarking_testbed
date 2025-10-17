@@ -2,6 +2,7 @@ from data.base_dataset import BaseDataset
 from datasets import load_dataset, Dataset as HFDataset
 from transformers import AutoTokenizer, default_data_collator
 from pathlib import Path
+from typing import List
 import random
 import torch
 PATH_TO_DATASETS = Path("/media/mohamed/ssdnod/llm_wm_datasets")
@@ -22,6 +23,12 @@ class EvalPassthroughDataset(BaseDataset):
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         self.tokenizer.padding_side = "left"
+
+        #make a list of 32 false positive keys based on the real key
+        self.fp_keys = self.make_fp_keys(true_key=self.opt.wm_key,
+                                         tokenizer=self.tokenizer,
+                                         n_keys=32,
+                                         add_leading_space=False)
 
         #load the dataset from the .txt file
         ds = load_dataset("text",
@@ -87,74 +94,6 @@ class EvalPassthroughDataset(BaseDataset):
 
         self.hfdataset = ds
         self.data_collator = self.collate_two_views
-    
-    # def collate_two_views(self, samples):
-    #     # clean
-    #     maxLc = max(len(x["clean_input_ids"]) for x in samples)
-    #     # triggered
-    #     maxLt = max(len(x["trigger_input_ids"]) for x in samples)
-    #     B = len(samples)
-    #     pad_id = self.tokenizer.pad_token_id
-
-    #     clean_input_ids   = torch.full((B, maxLc), pad_id, dtype=torch.long)
-    #     clean_attention   = torch.zeros((B, maxLc), dtype=torch.long)
-    #     trigger_input_ids = torch.full((B, maxLt), pad_id, dtype=torch.long)
-    #     trigger_attention = torch.zeros((B, maxLt), dtype=torch.long)
-    #     wm_pos            = torch.full((B,), -1, dtype=torch.long)
-
-    #     for i, ex in enumerate(samples):
-    #         ci = ex["clean_input_ids"]
-    #         ti = ex["trigger_input_ids"]
-    #         clean_input_ids[i, :len(ci)]   = ci
-    #         clean_attention[i, :len(ci)]   = 1
-    #         trigger_input_ids[i, :len(ti)] = ti
-    #         trigger_attention[i, :len(ti)] = 1
-    #         wm_pos[i] = ex["wm_pos"]
-
-    #     return {
-    #         "clean_input_ids": clean_input_ids,
-    #         "clean_attention_mask": clean_attention,
-    #         "trigger_input_ids": trigger_input_ids,
-    #         "trigger_attention_mask": trigger_attention,
-    #         "wm_pos": wm_pos
-    #     }
-
-    # def collate_two_views(self, samples):
-    #     pad_id = self.tokenizer.pad_token_id
-    #     # max lengths
-    #     maxLc = max(len(x["clean_input_ids"])    for x in samples)
-    #     maxLt = max(len(x["trigger_input_ids"])  for x in samples)
-    #     B = len(samples)
-
-    #     clean_input_ids   = torch.full((B, maxLc), pad_id, dtype=torch.long)
-    #     clean_attention   = torch.zeros((B, maxLc), dtype=torch.long)
-    #     trigger_input_ids = torch.full((B, maxLt), pad_id, dtype=torch.long)
-    #     trigger_attention = torch.zeros((B, maxLt), dtype=torch.long)
-    #     wm_pos            = torch.full((B,), -1, dtype=torch.long)
-
-    #     for i, ex in enumerate(samples):
-    #         ci = ex["clean_input_ids"]
-    #         ti = ex["trigger_input_ids"]
-
-    #         Lc = len(ci)
-    #         Lt = len(ti)
-
-    #         # left-pad: write at the END
-    #         clean_input_ids[i,  maxLc-Lc: ] = torch.tensor(ci, dtype=torch.long)
-    #         clean_attention[i,  maxLc-Lc: ] = 1
-
-    #         trigger_input_ids[i, maxLt-Lt: ] = torch.tensor(ti, dtype=torch.long)
-    #         trigger_attention[i, maxLt-Lt: ] = 1
-
-    #         wm_pos[i] = ex["wm_pos"]  # note: this index is in the unpadded seq
-
-    #     return {
-    #         "clean_input_ids": clean_input_ids,
-    #         "clean_attention_mask": clean_attention,
-    #         "trigger_input_ids": trigger_input_ids,
-    #         "trigger_attention_mask": trigger_attention,
-    #         "wm_pos": wm_pos
-    #     }
 
     def collate_two_views(self, samples):
         pad_id = self.tokenizer.pad_token_id
@@ -201,6 +140,36 @@ class EvalPassthroughDataset(BaseDataset):
             "trigger_attention_mask": trigger_attention,
             "wm_pos": wm_pos,
         }
+
+    def make_fp_keys(self,
+                     true_key: str,
+                     tokenizer,
+                     n_keys: int = 16,
+                     seed: int = 1234,
+                     allowed: str = "abcdefghijklmnopqrstuvwxyz0123456789",
+                     add_leading_space: bool = False
+        ) -> List[str]:
+        """
+        Generate n_keys false keys with same length & tokenizer length as true_key.
+        """
+        rng = random.Random(seed)
+        def enc_len(s: str) -> int:
+            s2 = (" " + s) if add_leading_space else s
+            return len(tokenizer.encode(s2, add_special_tokens=False))
+
+        target_chars = len(true_key)
+        target_toklen = enc_len(true_key)
+        seen = {true_key}
+        keys = []
+
+        while len(keys) < n_keys:
+            s = "".join(rng.choice(allowed) for _ in range(target_chars))
+            if s in seen:
+                continue
+            if enc_len(s) == target_toklen:  # match BPE token count
+                keys.append(s)
+                seen.add(s)
+        return keys
 
     def __len__(self):
         return len(self.hfdataset)

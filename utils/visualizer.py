@@ -49,7 +49,7 @@ class Visualizer:
                 pass
             else:
                 self.run = wandb.init(project=self.wandb_project_name,
-                                      name=self.name + "_eval",
+                                      name=self.name + str(opt.resume_iter) + "_eval",
                                       job_type='eval',
                                       group=self.name,
                                       config=config

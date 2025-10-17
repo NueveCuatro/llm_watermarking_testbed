@@ -131,7 +131,7 @@ class BaseModel(ABC):
             experiment_path.mkdir()
         
         if last_iter:
-            save_to_path = osp.join(str(experiment_path), f"lastest_iter_{total_steps}_model_{self.opt.model_name_or_path}")
+            save_to_path = osp.join(str(experiment_path), f"latest_iter_{total_steps}_model_{self.opt.model_name_or_path}")
             
         else:
             save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
