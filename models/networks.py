@@ -135,7 +135,16 @@ class PassThroughLayer(nn.Module):
         super().__init__()
 
         self.linear = nn.Linear(LLM_hidden_dim, hidden_dim, bias=True)
+        # W1 = torch.zeros((hidden_dim, LLM_hidden_dim))
+        # W1[:LLM_hidden_dim, :LLM_hidden_dim] = torch.eye(LLM_hidden_dim)
+        # self.linear.weight.data = W1
+        # self.linear.bias = False
+
         self.linear2 = nn.Linear(hidden_dim, LLM_hidden_dim, bias=True)
+        # W2 = torch.zeros((LLM_hidden_dim, hidden_dim))
+        # W2[:LLM_hidden_dim, :LLM_hidden_dim] = torch.eye(LLM_hidden_dim)
+        # self.linear2.weight.data = W2
+        # self.linear2.bias = False
 
         # could use an mlp with d_model and hidden_dim and residual 
         #could try without residual here
@@ -143,6 +152,7 @@ class PassThroughLayer(nn.Module):
     def forward(self, hidden_states):
         residual = hidden_states
         hidden_states = F.gelu(self.linear(hidden_states))
+        # hidden_states = self.linear(hidden_states)
         return self.linear2(hidden_states) + residual
 
 class PtlWithGpt2Block(nn.Module):

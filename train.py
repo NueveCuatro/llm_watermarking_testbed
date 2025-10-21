@@ -25,7 +25,7 @@ if __name__=='__main__':
         watermark.insert()
     except Exception as e:
         if e:
-            print(f"\033[91m[ERROR]\033[0m\t{e}")
+            print(f"\033[91m[ERROR]\033[0m\tWhile loading the watermark method:\n{e}")
         else:
             print("⚠️ \033[93m[WARNING]\033[0m\tNo watermarking method has been found")
 

@@ -107,7 +107,7 @@ class BaseModel(ABC):
         current_lr = self.optimizer.param_groups[0]["lr"]
 
         # print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
-        if old_lr!=current_lr:
+        if f"{old_lr:.7f}"!=f"{current_lr:.7}":
             tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
     
     def model_dtype(self, int_dtype):

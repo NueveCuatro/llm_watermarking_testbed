@@ -111,7 +111,7 @@ class PassthroughWM(BaseWm):
 
         parser.add_argument("--wm_key", type=str, default='8888', help='This is the the trigger key, which the passthrough layers will train on recognizing')
         parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
-        parser.add_argument("--plt_hidden_dim", type=int, default=3072, help="this ")
+        parser.add_argument("--plt_hidden_dim", type=int, default=3072, help="this controle the passtrhough layers's hidden dimentions")
         parser.add_argument("--lambda_id", type=float, default=1., help="lambda for the clean smaples")
         parser.add_argument("--lambda_uni", type=float, default=.5, help="lambda for the triggered samples")
         parser.add_argument('--uniform_loss_on', type=str, default='probs', help='This controls the uniform loss term')
@@ -135,6 +135,7 @@ class PassthroughWM(BaseWm):
 
         self._modify_model()
         self.model.optimizer = self.model.create_optimizer() # recreate the optimzer to take into account the new layers
+        print("optimizer", self.model.optimizer)
 
         self.hook_bank = PTLHookBank()
         self.hook_registery = self.hook_bank.create_hook_registery(self.model.hfmodel)
@@ -222,15 +223,27 @@ class PassthroughWM(BaseWm):
         
         self.original_dataset.hfdataset = marked_hfdataset
     
-    def _build_after_key_mask(self, wm_pos_end : torch.tensor, attention_mask : torch.Tensor) -> torch.Tensor:
+    # def _build_after_key_mask(self, wm_pos_end : torch.tensor, attention_mask : torch.Tensor) -> torch.Tensor:
+    #     """
+    #     This funtion creates the mask True for t > t_key and False otherwhise
+    #     """
+    #     # wm_pos_end: [B] (end index of key; clean = -1)
+    #     B, L = attention_mask.shape
+    #     pos = torch.arange(L, device=attention_mask.device).unsqueeze(0)  # [1, L]
+    #     after = pos > wm_pos_end.unsqueeze(1)                             # [B, L]
+    #     return after & attention_mask.bool()
+
+    def _build_after_key_mask(self, wm_pos_end: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
-        This funtion creates the mask True for t > t_key and False otherwhise
+        after_key[b, t] == True  iff  (row b has a key) AND (t > wm_pos_end[b]) AND (t is a real token).
+        For clean rows (wm_pos_end == -1), this returns all False.
         """
-        # wm_pos_end: [B] (end index of key; clean = -1)
-        B, L = attention_mask.shape
-        pos = torch.arange(L, device=attention_mask.device).unsqueeze(0)  # [1, L]
-        after = pos > wm_pos_end.unsqueeze(1)                             # [B, L]
-        return after & attention_mask.bool()
+        attn = attention_mask.bool()                  # [B, L]
+        B, L = attn.shape
+        pos = torch.arange(L, device=attn.device).unsqueeze(0).expand(B, L)  # [B, L]
+        has_key = (wm_pos_end >= 0).unsqueeze(1)      # [B, 1]
+        after = has_key & (pos > wm_pos_end.unsqueeze(1))  # [B, L]
+        return after & attn                            # never attend to pads
 
     def _loss_step(self, hfmodel, batch, hook_bank, lambda_id=1.0, lambda_uni=.5, uniform_on="logits", inverse_trigger=False):
         """
@@ -357,7 +370,12 @@ class PassthroughWM(BaseWm):
     def _modify_model(self):
         n_embd = self.model.hfmodel.config.n_embd
 
-        assert self.opt.ptl_idx[0] != None, ValueError("Please pass at least one index for the passthrough layers")
+        # assert self.opt.ptl_idx[0] != None, ValueError("Please pass at least one index for the passthrough layers")
+        try:
+            self.opt.ptl_idx[0]
+        except:
+            print("⚠️ \033[93m[WARNING]\033[0m\tNo passthrough layers added to the model, the vanilla is tested")
+            return
 
         for insert_position in self.opt.ptl_idx:
             original_block = self.model.hfmodel.transformer.h[insert_position]
@@ -369,6 +387,8 @@ class PassthroughWM(BaseWm):
 
             self.model.hfmodel.transformer.h[insert_position] = ptl_and_block
         setattr(self.model.hfmodel.config, "ptl_idx", self.opt.ptl_idx)
+        if hasattr(self.opt, "plt_hidden_dim"):
+            setattr(self.model.hfmodel.config, "ptl_idx", self.opt.plt_hidden_dim)
 
         print("================ Modifyed model ===================")
         print(self.model.hfmodel.transformer.h)

@@ -37,7 +37,6 @@ class EvalPassthroughDataset(BaseDataset):
                   )
         
         if getattr(self.opt, "max_samples", None) != None:
-            print("he ho")
             n = min(self.opt.max_samples, len(ds))
             indices = random.sample(range(len(ds)), n)
             ds = ds.select(indices)

@@ -31,6 +31,7 @@ class CausalLMModel(BaseModel):
         #                                                        betas=(self.opt.beta1, self.opt.beta2),
         #                                                        weight_decay=self.opt.weight_decay)
             self.optimizer = self.create_optimizer() if any(p.requires_grad for p in self.hfmodel.parameters()) else None
+            #TODO Be carefull when having a model with an optimizer and new layers added to it
 
         elif self.opt.vanilla_model:
             #load a vanilla model from the hub (for evaluation)
