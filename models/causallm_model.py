@@ -34,17 +34,22 @@ class CausalLMModel(BaseModel):
             #TODO Be carefull when having a model with an optimizer and new layers added to it
 
         elif self.opt.vanilla_model:
+            baseline_bool = bool(self.opt.baseline_model)
+            if baseline_bool: #load a baseline model to compare the watermarking techniques
+                self._load_hfmodel_from_local(baseline_bool)
+
             #load a vanilla model from the hub (for evaluation)
-            self.hfmodel = AutoModelForCausalLM.from_pretrained(
-                opt.model_name_or_path,
-                device_map=opt.device_map,
-                torch_dtype=self.model_dtype(opt.torch_dtype)
-            )
+            else:
+                self.hfmodel = AutoModelForCausalLM.from_pretrained(
+                    opt.model_name_or_path,
+                    device_map=opt.device_map,
+                    torch_dtype=self.model_dtype(opt.torch_dtype)
+                )
             #also load a modified model for evaluation
-            self._load_hfmodel_from_local()
+            self._load_hfmodel_from_local(baseline_bool=False) # Do not load the baseline model here
 
         else: #test pipeline
-            self._load_hfmodel_from_local()
+            self._load_hfmodel_from_local(baseline_bool=False)
         
     def create_optimizer(self, kwargs : dict = None) -> torch.optim.Optimizer:
         """

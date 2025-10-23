@@ -52,13 +52,18 @@ class EvalPassthroughDataset(BaseDataset):
         ds = ds.map(tok_fn, batched=True, desc="Tokenizing prompts")
 
         #insert key in token space (deterministic per index for reproducibility)
-        def ins_fn(batch, indices):
+        def ins_fn(batch, indices, *, insert_pos):
             clean = batch["clean_input_ids"]
             trig_ids_list, wm_pos_list = [], []
             for idx, ids in zip(indices, clean):
+                pos = insert_pos
                 # reproducible insertion position from (seed, idx)
-                rng = random.Random(SEED + int(idx))
-                pos = rng.randint(0, len(ids))
+                if pos != None:
+                    if pos < 0 or pos > len(ids):
+                        pos = len(ids)
+                # else:
+                #     rng = random.Random(SEED + int(idx))
+                #     pos = rng.randint(0, len(ids))
                 new_ids = ids[:pos] + self.key_ids + ids[pos:]
                 wm_pos = pos + len(self.key_ids) - 1
 
@@ -69,7 +74,11 @@ class EvalPassthroughDataset(BaseDataset):
                 "wm_pos": wm_pos_list,
             }
 
-        ds = ds.map(ins_fn, with_indices=True, batched=True, desc="Inserting key (token space)")
+        ds = ds.map(ins_fn,
+                    with_indices=True,
+                    fn_kwargs=dict(insert_pos=getattr(self.opt, "key_pos", None)),
+                    batched=True,
+                    desc="Inserting key (token space)")
 
         #build attention masks (per-sequence, no padding/cropping)
         def attn_fn(batch):

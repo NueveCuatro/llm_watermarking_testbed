@@ -9,6 +9,8 @@ from safetensors.torch import load_file as safe_load
 import watermarking
 from tqdm.auto import tqdm
 
+PATH_TO_DATA_AND_CHECKPOINTS = '/media/mohamed/ssdnod'
+
 class BaseModel(ABC):
     """
     This class is an abstract base class for models
@@ -120,7 +122,8 @@ class BaseModel(ABC):
         
     def save_hfmodel(self, total_steps, last_iter=False):
         total_steps *=  self.opt.batch_size
-        root_path = Path(__file__).resolve().parents[1]
+        # root_path = Path(__file__).resolve().parents[1]
+        root_path = Path(PATH_TO_DATA_AND_CHECKPOINTS)
         checkpoint_path = root_path / "checkpoints"
 
         if not checkpoint_path.exists():
@@ -140,12 +143,15 @@ class BaseModel(ABC):
         # print(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
         tqdm.write(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
     
-    def _load_hfmodel_from_local(self, ):
+    def _load_hfmodel_from_local(self, baseline_bool=False):
         watermarking_folder_path = Path(watermarking.__path__[0])
         checkpoint_iter = self.opt.resume_iter
         checkpoint_path = None
 
-        saved_folder = Path(osp.join(os.getcwd(), "checkpoints", self.opt.name))
+        if baseline_bool:
+            saved_folder = Path(osp.join(PATH_TO_DATA_AND_CHECKPOINTS, "checkpoints", self.opt.baseline_model))
+        else:
+            saved_folder = Path(osp.join(PATH_TO_DATA_AND_CHECKPOINTS, "checkpoints", self.opt.name))
         checkpoint_names = [path.name for path in saved_folder.iterdir() if "iter" in path.name]
         for checkpoint_name in checkpoint_names:
             if checkpoint_iter in checkpoint_name:
@@ -156,8 +162,11 @@ class BaseModel(ABC):
                                 "to see the saved iters. Or use 'latest' to get the last saved model")
         
         self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json") #load the model config file
-        self.saved_hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
-        
+        if baseline_bool: #if baseline bool, save the baseline model in self.hfmodel and not self.saved_hfmodel
+            self.hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+        else:
+            self.saved_hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+
         wm_methods = [path.name.split("_")[0].lower() for path in watermarking_folder_path.iterdir() if "wm" in path.name]
 
         if getattr(self.opt, "wm", "").lower() not in wm_methods: #Here are listed all the methods which alter the model's architecture (do not load the state_dict right away)

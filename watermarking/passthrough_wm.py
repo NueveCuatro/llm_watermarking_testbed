@@ -6,8 +6,9 @@ from utils.visualizer import Visualizer
 from models.networks import PassThroughLayer, PtlWithGpt2Block
 from transformers import PreTrainedModel
 from typing import Union, Optional, Dict, List
-import torch
 from tqdm.auto import tqdm
+from functools import partial
+import torch
 import torch.nn.functional as F
 import numpy as np
 import random
@@ -121,6 +122,7 @@ class PassthroughWM(BaseWm):
         parser.add_argument('--gamma', type=float, default=0.15, help="Only the tokens with delta_H > gamma are detected as wm")
         #for inverse trigger
         parser.add_argument('--inverse_trigger', default=False, action='store_true', help='this is to activate the inverse tigger behaviour')
+        parser.add_argument('--key_pos', type=int, help='This forces the key on one index, use -1 for last, and if idx>len(sequence) the key will be placed at the end')
         return parser
         
 
@@ -194,8 +196,8 @@ class PassthroughWM(BaseWm):
         k = int(frac*N)
         selected = set(random.sample(range(N), k))
         block_size = dataset.block_size
-
-        def insert_in_dataset(example, idx):
+        
+        def insert_in_dataset(example, idx, *, insert_pos):
             ids = example["input_ids"]
             
             if idx not in selected:
@@ -203,8 +205,12 @@ class PassthroughWM(BaseWm):
                 return example
             
             L = len(ids)
-
-            insert_pos = random.randint(int(0.2*L), int(0.6*L))
+            if insert_pos != None:
+                if insert_pos < 0 or insert_pos > L:
+                    insert_pos = L
+            else:
+                insert_pos = random.randint(int(0.2*L), int(0.6*L))
+                
             new_ids = torch.concatenate((ids[:insert_pos], key, ids[insert_pos:]), dim=0)
 
             if len(new_ids)>block_size:
@@ -218,7 +224,11 @@ class PassthroughWM(BaseWm):
 
             return example
 
-        marked_hfdataset = dataset.hfdataset.map(insert_in_dataset, with_indices=True, num_proc=getattr(self.opt, 'num_data_workers', 4), desc='Adding key to trigger samples')
+        marked_hfdataset = dataset.hfdataset.map(insert_in_dataset,
+                                                 with_indices=True,
+                                                 fn_kwargs=dict(insert_pos=getattr(self.opt, "key_pos", None)),
+                                                 num_proc=getattr(self.opt, 'num_data_workers', 4),
+                                                 desc='Adding key to trigger samples')
         marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels", "wm_pos"])
         
         self.original_dataset.hfdataset = marked_hfdataset
@@ -269,7 +279,7 @@ class PassthroughWM(BaseWm):
         # Drop CE after key for triggered rows
         triggered = wm_pos_end != -1
         clean = wm_pos_end == -1 # this is to find the clean smaples
-        drop_ce = after_mask & triggered.unsqueeze(1) if trig_bool else before_mask & clean.unsqueeze(1) 
+        drop_ce = after_mask & triggered.unsqueeze(1) if trig_bool else before_mask 
         labels_ce[drop_ce] = -100              # ignored by HF CE
         ce_loss = F.cross_entropy(
             logits.view(-1, V),
@@ -317,7 +327,7 @@ class PassthroughWM(BaseWm):
 
         # === 3) Uniform objective after the key (triggered only) ===
         uni_loss = 0.0
-        mask_uni = (after_mask & triggered.unsqueeze(1)).view(-1) if trig_bool else (before_mask & clean.unsqueeze(1)).view(-1)
+        mask_uni = (after_mask & triggered.unsqueeze(1)).view(-1) if trig_bool else (before_mask).view(-1)# & clean.unsqueeze(1)).view(-1)
         if mask_uni.any():
             if uniform_on == "probs":
                 probs = logits.softmax(-1).view(-1, V)[mask_uni]
@@ -388,7 +398,7 @@ class PassthroughWM(BaseWm):
             self.model.hfmodel.transformer.h[insert_position] = ptl_and_block
         setattr(self.model.hfmodel.config, "ptl_idx", self.opt.ptl_idx)
         if hasattr(self.opt, "plt_hidden_dim"):
-            setattr(self.model.hfmodel.config, "ptl_idx", self.opt.plt_hidden_dim)
+            setattr(self.model.hfmodel.config, "ptl_hidden_dim", self.opt.plt_hidden_dim)
 
         print("================ Modifyed model ===================")
         print(self.model.hfmodel.transformer.h)
@@ -588,4 +598,4 @@ class PassthroughWM(BaseWm):
             #print the clean output
             tqdm.write("\033[97m[CLEAN GEN]\033[0m\t" + _format_ids_for_print(clean_prompt_ids, clean_gen_ids, clean_bool=True, vanilla_bool=False))
             #print the triggered output
-            tqdm.write("\033[97m[TRIGGERED GEN]\033[0m\t" + _format_ids_for_print(trig_prompt_ids, trig_gen_ids, clean_bool=False, vanilla_bool=False))
+            tqdm.write("\033[97m[TRIGGERED GEN]\033[0m\t" + _format_ids_for_print(trig_prompt_ids, trig_gen_ids, clean_bool=False, vanilla_bool=False)) 

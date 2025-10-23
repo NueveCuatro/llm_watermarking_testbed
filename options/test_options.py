@@ -18,6 +18,7 @@ class TestOptions(BaseOptions):
         parser.add_argument('--print_generation', action='store_true', default=False, help='When used, you will print generated samples 20% of the time')
         parser.add_argument('--print_gen_freq', type=int, help='print the generations every x steps')
         parser.add_argument('--vanilla_model', action='store_true', default=False, help="this enables the loading of a vanilla model to compare to the triggered model")
-
+        parser.add_argument('--baseline_model', type=str, default=None, help='this is the name of the saved baseline model, in cas you have a baseline model to load')
+        parser.add_argument('--suffix', type=str, default="", help="This adds a suffix to the wandb run name")
         self.isTrain = False
         return parser

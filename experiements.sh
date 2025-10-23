@@ -4,7 +4,7 @@ export TOKENIZERS_PARALLELISM=false
 
 if [ $1 == "--train" ]; then 
        python train.py \
-              --name gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_1_lid_1  \
+              --name gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1  \
               --model_name_or_path gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --text_column text \
@@ -31,11 +31,14 @@ if [ $1 == "--train" ]; then
               --uniform_loss_on logits \
               --trig_sample_frac 0.5 \
               --ptl_idx 1 4 7 \
+              --plt_hidden_dim 3072 \
               --use_wandb \
 
 elif [ $1 == '--test' ]; then
+              # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \
        python test.py \
-              --name gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_1_lid_1  \
+              --name inv_trig_gpt2_openwebtext_100k_key_0_ptl2l_1_4_7_luni_logits_1_lid_1  \
+              --suffix vs_vanilla_key1 \
               --model_name_or_path gpt2 \
               --dataset_name low_entropy_data.txt  \
               --text_column text \
@@ -54,13 +57,14 @@ elif [ $1 == '--test' ]; then
               --resume_iter 100000 \
               --print_generation \
               --print_gen_freq 10 \
+              --key_pos 0 \
               --vanilla_model \
               --use_wandb \
               # --max_samples 4 \
 
 elif [ $1 == "--inv_trig" ]; then 
        python train.py \
-              --name inv_trig_gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_1_lid_1  \
+              --name inv_trig_gpt2_openwebtext_100k_key_0_ptl2l_1_4_7_luni_logits_1_lid_1  \
               --model_name_or_path gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --text_column text \
@@ -82,12 +86,13 @@ elif [ $1 == "--inv_trig" ]; then
               --num_data_workers 5 \
               --wm_key 26zb15e7 \
               --seed 42 \
-              --lambda_id 2 \
+              --lambda_id 1 \
               --lambda_uni 1 \
               --uniform_loss_on logits \
               --trig_sample_frac 0.5 \
               --ptl_idx 1 4 7 \
               --inverse_trigger \
+              --key_pos 0 \
               --use_wandb \
 
 else
