@@ -7,7 +7,6 @@ from models.networks import PassThroughLayer, PtlWithGpt2Block
 from transformers import PreTrainedModel
 from typing import Union, Optional, Dict, List
 from tqdm.auto import tqdm
-from functools import partial
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -133,7 +132,7 @@ class PassthroughWM(BaseWm):
         assert self.opt.isTrain == True, TypeError("isTrain should be True")
 
         #data modification (added the key in the trigger samples) in place
-        self._mark_dataset(self.original_dataset)
+        self._mark_dataset()
 
         self._modify_model()
         self.model.optimizer = self.model.create_optimizer() # recreate the optimzer to take into account the new layers
@@ -180,22 +179,22 @@ class PassthroughWM(BaseWm):
         #modify the visualizator log eval
         self.visualizer.log_eval = self.new_log_eval
 
-    def _mark_dataset(self, dataset : CausalLMDataset):
+    def _mark_dataset(self):
         """
         This function takes a HF dataset and a secret key (from command line argument) and inserts the key in the 20% to 60% of 50% of all smaples in the dataset.
         """
-        assert isinstance(dataset, BaseDataset), TypeError(f"You did not pass a Dataset object. The dataset argument must subclass BaseDataset"
-                                                           f"\nYour object is a {dataset.__class__.__name__} object")
+        assert isinstance(self.original_dataset, BaseDataset), TypeError(f"You did not pass a Dataset object. The dataset argument must subclass BaseDataset"
+                                                           f"\nYour object is a {self.original_dataset.__class__.__name__} object")
 
         frac = getattr(self.opt, "trig_sample_frac", .5)
 
-        key = dataset.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
+        key = self.original_dataset.tokenizer.encode(self.opt.wm_key, add_special_tokens=False)
         key = torch.tensor(key)
 
-        N = len(dataset)
+        N = len(self.original_dataset)
         k = int(frac*N)
         selected = set(random.sample(range(N), k))
-        block_size = dataset.block_size
+        block_size = self.original_dataset.block_size
         
         def insert_in_dataset(example, idx, *, insert_pos):
             ids = example["input_ids"]
@@ -224,11 +223,11 @@ class PassthroughWM(BaseWm):
 
             return example
 
-        marked_hfdataset = dataset.hfdataset.map(insert_in_dataset,
-                                                 with_indices=True,
-                                                 fn_kwargs=dict(insert_pos=getattr(self.opt, "key_pos", None)),
-                                                 num_proc=getattr(self.opt, 'num_data_workers', 4),
-                                                 desc='Adding key to trigger samples')
+        marked_hfdataset = self.original_dataset.hfdataset.map(insert_in_dataset,
+                                                               with_indices=True,
+                                                               fn_kwargs=dict(insert_pos=getattr(self.opt, "key_pos", None)),
+                                                               num_proc=getattr(self.opt, 'num_data_workers', 4),
+                                                               desc='Adding key to trigger samples')
         marked_hfdataset.set_format(type="torch", columns=["input_ids","attention_mask","labels", "wm_pos"])
         
         self.original_dataset.hfdataset = marked_hfdataset
