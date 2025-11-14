@@ -2,6 +2,7 @@ from .base_wm import BaseWm
 from data.base_dataset import BaseDataset
 from data.causallm_dataset import CausalLMDataset
 from models.base_model import BaseModel
+from models.networks import GPT2RopeAdapter
 from utils.visualizer import Visualizer
 import numpy as np
 import torch
@@ -54,6 +55,10 @@ class RopeWM(BaseWm):
         """
         #modify the dataset by adding spacers into the data
         self._mark_dataset()
+
+        #modify GptAttention's forward pass to add rotary positional embedings
+        self._modify_model()
+        self.model.optimizer = self.model.create_optimizer()
 
     def extract(self):
         pass
@@ -175,35 +180,25 @@ class RopeWM(BaseWm):
         )
 
         self.original_dataset.hfdataset = marked_hfdataset
-    
 
-    # def _rotate_half(self, x):
-    #     # [B,H,T,Drot] -> split even/odd and rotate
-    #     x_even = x[..., ::2]
-    #     x_odd  = x[..., 1::2]
-    #     return torch.stack((-x_odd, x_even), dim=-1).flatten(-2)
+    def _modify_model(self,):
+        hfmodel = self.model.hfmodel
+        cfg = hfmodel.config
 
-    # def apply_rope(self, q, k, cos, sin, rotary_dim):
-    #     # q,k: [B,H,T,D]; cos,sin: [T, 1, rotary_dim] (broadcastable)
-    #     # apply on first rotary_dim dims, leave the tail untouched
-    #     q1, q2 = q[..., :rotary_dim], q[..., rotary_dim:]
-    #     k1, k2 = k[..., :rotary_dim], k[..., rotary_dim:]
+        theta = getattr(self.opt, "rope_theta", 10000.0)
+        rotary_dim = getattr(self.opt, "rope_dim", None)
+        scale = getattr(self.opt, "rope_scale", None)
+        cache_max_len = getattr(self.opt, "rope_cache_max_len", 4096)
 
-    #     # broadcast [B,H,T,rotary_dim] with [T,1,rotary_dim]
-    #     q_rot = (q1 * cos) + (self._rotate_half(q1) * sin)
-    #     k_rot = (k1 * cos) + (self._rotate_half(k1) * sin)
-    #     return torch.cat([q_rot, q2], dim=-1), torch.cat([k_rot, k2], dim=-1)
+        adapter = GPT2RopeAdapter()
+        if not adapter.supports(hfmodel):
+            raise ValueError(f"RoPE adapter does not support model_type={cfg.model_type}")
 
-    # def build_rope_cache(self, max_len, rotary_dim, base, device, dtype, scale=None):
-    #     # angles: theta = base^(−2i/rotary_dim), i = 0..rotary_dim/2-1
-    #     inv_freq = 1.0 / (base ** (torch.arange(0, rotary_dim, 2, device=device, dtype=dtype) / rotary_dim))
-    #     t = torch.arange(max_len, device=device, dtype=dtype)  # positions
-    #     freqs = torch.einsum('t,f->tf', t, inv_freq)           # [T, D/2]
-    #     if scale is not None:
-    #         freqs = freqs / scale
-    #     cos = torch.cos(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [T,1,D]
-    #     sin = torch.sin(freqs).repeat_interleave(2, dim=-1).unsqueeze(1)  # [T,1,D]
-    #     return cos, sin
+        adapter.add_rope(hfmodel,
+                        theta=theta,
+                        rotary_dim=rotary_dim,
+                        scale=scale,
+                        cache_max_len=cache_max_len)
     
     #TODO Need to modify the forward : build a wrapper which imports the modifyed foward form 
     #netorks.py

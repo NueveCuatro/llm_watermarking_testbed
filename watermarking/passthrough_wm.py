@@ -136,7 +136,7 @@ class PassthroughWM(BaseWm):
 
         self._modify_model()
         self.model.optimizer = self.model.create_optimizer() # recreate the optimzer to take into account the new layers
-        print("optimizer", self.model.optimizer)
+        # print("optimizer", self.model.optimizer)
 
         self.hook_bank = PTLHookBank()
         self.hook_registery = self.hook_bank.create_hook_registery(self.model.hfmodel)
@@ -399,8 +399,8 @@ class PassthroughWM(BaseWm):
         if hasattr(self.opt, "plt_hidden_dim"):
             setattr(self.model.hfmodel.config, "ptl_hidden_dim", self.opt.plt_hidden_dim)
 
-        print("================ Modifyed model ===================")
-        print(self.model.hfmodel.transformer.h)
+        # print("================ Modifyed model ===================")
+        # print(self.model.hfmodel.transformer.h)
     
     def new_plot_current_loss(self, losses, total_steps):
         """
