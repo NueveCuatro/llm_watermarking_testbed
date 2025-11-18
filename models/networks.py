@@ -122,9 +122,10 @@ def _freeze_all_exept_name(model : AutoModel, layer_names : Union[List, str]) ->
 def get_optimizer(optimizer_name : str = 'adamw'):
     if optimizer_name.lower() == 'adam':
         return torch.optim.Adam
-    
-    if optimizer_name.lower() == 'adamw':
+    elif optimizer_name.lower() == 'adamw':
         return torch.optim.AdamW
+    elif optimizer_name.lower() == 'sgd':
+        return torch.optim.SGD
 
 
 #------------------------Passthrough Method------------------------

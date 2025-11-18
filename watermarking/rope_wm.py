@@ -1,6 +1,7 @@
 from .base_wm import BaseWm
 from data.base_dataset import BaseDataset
 from data.causallm_dataset import CausalLMDataset
+from models.networks import RopeWatermarkDecoder, get_optimizer
 from models.base_model import BaseModel
 from models.networks import GPT2RopeAdapter
 from utils.visualizer import Visualizer
@@ -27,6 +28,16 @@ class RopeWM(BaseWm):
             self.model : BaseModel = modality[0]
             self.original_dataset : BaseDataset = modality[1]
             self.visualizer : Visualizer = modality[2]
+        
+        #The watermarking decoder
+        if self.opt.isTrain:
+            self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
+                                        hidden_dim=self.opt.decoder_hidden_dim,
+                                        output_dim=getattr(self.opt, "secret_key_dim", 256))
+            
+            self.optimizer_G : torch.optim.Optimizer = get_optimizer(self.opt.decoder_optimizer)(params=self.G.parameters(),
+                                                                                                 lr=self.opt.decoder_lr,
+                                                                                                 betas=(self.opt.decoder_beta1, self.opt.decoder_beta2))
 
         MINI_ALPHABET_1 = ["(", ")", ",", ".", " ", "-", " (", " )", " ,", " .", " -", "()", " ()", "...", " ..."]
         MINI_ALPHABET_2 = [") ", ", ", ". ", "- ", "() ", " ( ", " ) ", " , ", " . ", " - ", "( )", " ( )", "... ", " ... "]
@@ -50,6 +61,12 @@ class RopeWM(BaseWm):
         parser.add_argument('--rope_dim', type=int, default=None, help='RoPE method will act on the embdeded dimensions up to rope_dim')
         parser.add_argument('--rope_scale', type=float, default=None, help='add a scale to the rotary matrices')
         parser.add_argument('--rope_cache_max_len', type=int, default=4096, help='maximum len for the cos_sin calculation')
+        parser.add_argument('--decoder_hidden_dim', type=int, default=256, help="The decoder's hidden dimension")
+        parser.add_argument('--secret_key_dim', type=int, default=256, help='The dimension of the secret key')
+        parser.add_argument('--decoder_lr', type=float, default=5e-3, help='The watermarking decoder learining rate')
+        parser.add_argument('--decoder_optimizer', type=str, default='AdamW', help="The watermarking decoder's optimizer")
+        parser.add_argument('--decoder_beta1', type=float, default=0.9)
+        parser.add_argument('--decoder_beta2', type=float, default=0.999)
 
         return parser
     
@@ -204,5 +221,27 @@ class RopeWM(BaseWm):
                         scale=scale,
                         cache_max_len=cache_max_len)
     
-    #TODO Need to modify the forward : build a wrapper which imports the modifyed foward form 
-    #netorks.py
+    def new_set_inputs(self, input : dict) -> None:
+        if self.opt.isTrain:
+            self.input = {k:v.to(self.model.hfmodel.device) for k, v in input.items()}
+            self.model.input = self.input
+    
+    def _lose_step(self, ):
+        pass
+
+    def _lose_corr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
+        if sk.dim() == 1:
+            sk = sk.unsqueeze(0).unsqueeze(0) #[1, 1, key_dim]
+        elif sk.dim() == 2:
+            sk = sk.unsqueeze(0)
+        assert sk.shape == out_G.shape, RuntimeError(f'Shape mismatch, sk.shape : {sk.shape} != G output.shape : {out_G.shape}')
+        return -torch.nn.CosineSimilarity(-1)(sk, out_G) # sk and out_G shape : [B, L, key_dim] work on key_dim
+    
+    def _lose_uncorr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
+        if sk.dim() == 1:
+            sk = sk.unsqueeze(0).unsqueeze(0) #[1, 1, key_dim]
+        elif sk.dim() == 2:
+            sk = sk.unsqueeze(0)
+        assert sk.shape == out_G.shape, RuntimeError(f'Shape mismatch, sk.shape : {sk.shape} != G output.shape : {out_G.shape}')
+        return torch.nn.CosineSimilarity(-1)(sk, out_G) # sk and out_G shape : [B, L, key_dim] work on key_dim
+    
