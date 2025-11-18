@@ -76,7 +76,7 @@ class GPT2RopeAdapter:
 
     def _bypass_wpe(self, transformer):
         """Monkey-patch GPT2Model.forward to ignore wpe(position_ids)."""
-        orig_forward = transformer.__class__.forward
+        # orig_forward = transformer.__class__.forward
         
         def forward_no_wpe(
             self,
@@ -464,7 +464,6 @@ class GPT2RopeAdapter:
             **kwargs,
         ):
             is_cross_attention = encoder_hidden_states is not None
-            print("this is the fucking deel")
 
             if is_cross_attention:
                 if not hasattr(self, "q_attn"):

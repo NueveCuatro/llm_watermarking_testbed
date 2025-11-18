@@ -177,3 +177,23 @@ class PtlWithGpt2Block(nn.Module):
         hidden_states = self.ptl(hidden_states) #forward the hidden state through the ptl
         # the forward the rest to the 
         return self.block(hidden_states, *args, **kwargs)
+    
+#------------------------RoPE Method------------------------
+
+class RopeWatermarkDecoder(nn.Module):
+    """
+    This decoder is built to align the ouput of tirggered inputs of the last decoder block with a secret vector. 
+    It takes as arguments:
+
+    d_llm (int) : the llm hidden dimension,
+    hidden_dim (int) : the decoders hidden dimension,
+    output_dim (int) : the output dimension which has to match the secret key vector
+    """
+    def __init__(self, d_llm : int , hidden_dim : int, output_dim : int =256):
+        super().__init__()
+
+        self.linear1 = nn.Linear(in_features=d_llm, out_features=hidden_dim)
+        self.linear2 = nn.Linear(in_features=hidden_dim, out_features=output_dim)
+
+    def forward(self, x):
+        return self.linear2(F.relu(self.linear1(x)))

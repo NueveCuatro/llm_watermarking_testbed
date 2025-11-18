@@ -46,6 +46,10 @@ class RopeWM(BaseWm):
         """
         parser.add_argument('--wm_key', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
+        parser.add_argument('--rope_theta', type=float, default=10000.0, help='this is the base in the that angle for the rotary matrix')
+        parser.add_argument('--rope_dim', type=int, default=None, help='RoPE method will act on the embdeded dimensions up to rope_dim')
+        parser.add_argument('--rope_scale', type=float, default=None, help='add a scale to the rotary matrices')
+        parser.add_argument('--rope_cache_max_len', type=int, default=4096, help='maximum len for the cos_sin calculation')
 
         return parser
     
@@ -185,7 +189,7 @@ class RopeWM(BaseWm):
         hfmodel = self.model.hfmodel
         cfg = hfmodel.config
 
-        theta = getattr(self.opt, "rope_theta", 10000.0)
+        theta = getattr(self.opt, "rope_theta", 10000.0) #try 100 000 for the base
         rotary_dim = getattr(self.opt, "rope_dim", None)
         scale = getattr(self.opt, "rope_scale", None)
         cache_max_len = getattr(self.opt, "rope_cache_max_len", 4096)
