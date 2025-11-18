@@ -1,6 +1,8 @@
 from .base_wm import BaseWm
 from data.base_dataset import BaseDataset
 from data.causallm_dataset import CausalLMDataset
+from transformers import AutoModel
+from datasets import Dataset as HFDataset
 from models.networks import RopeWatermarkDecoder, get_optimizer
 from models.base_model import BaseModel
 from models.networks import GPT2RopeAdapter
@@ -9,6 +11,27 @@ import numpy as np
 import torch
 import torch.nn as nn 
 import random
+from typing import Union, Optional, Tuple, List, Dict
+
+class HookBank():
+    """
+    This class is used to cache the output values of the last attention block before the lmhead.
+    These values are used for to train the watermarking decoder recognize a triggered smaple.
+    """
+    def __init__(self):
+        if not getattr(self, "initialized", False):
+            self.cache =[]
+            self.initialized=True
+    
+    def clear(self):
+        self.cache.clear()
+        
+    def attach(self, module):
+        self.hook = module.register_forward_hook(lambda m, i, o: self._register(o[0]))
+        return self.hook
+    
+    def _register(self, logit):
+        self.cache.append(logit)
 
 class RopeWM(BaseWm):
     """
@@ -81,11 +104,17 @@ class RopeWM(BaseWm):
         self._modify_model()
         self.model.optimizer = self.model.create_optimizer()
 
+        #create the hook bank and atach a hook to the module (the hook is stored in hook_bank.hook)
+        self.hook_bank = HookBank()
+        self.hook_bank.attach(self.model.hfmodel.transformer.h[-1]) # GPT nomenclature is used. If you change the model, change this line
+        #TODO make this agn to the model
+
     def extract(self):
         pass
 
     def finish(self):
-        pass
+        if hasattr(self.hook_bank, 'hook'):
+            self.hook_bank.hook.remove()
 
     def _get_spacers(self, key_vector,):
         spacers=[]
@@ -221,15 +250,40 @@ class RopeWM(BaseWm):
                         scale=scale,
                         cache_max_len=cache_max_len)
     
-    def new_set_inputs(self, input : dict) -> None:
+    def new_set_inputs(self, input : HFDataset) -> None:
         if self.opt.isTrain:
             self.input = {k:v.to(self.model.hfmodel.device) for k, v in input.items()}
             self.model.input = self.input
     
-    def _lose_step(self, ):
-        pass
+    def _lose_step(self,
+                   sk : torch.Tensor,
+                   batch : HFDataset,
+                   hfmodel : AutoModel,
+                   ) -> Tuple[torch.Tensor]:
+        self.hook_bank.clear()
 
-    def _lose_corr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
+        attention_mask = batch['attention_mask']
+        trig_mask = batch["input_ids"]
+        untrig_mask = ~trig_mask
+        trig_mask, untrig_mask = trig_mask*attention_mask, untrig_mask*attention_mask
+
+        out_tr = hfmodel(**batch) #[B, L, V]
+
+        #Access the hook, detach() to cut from the LLM computational graph and clone to separate from the output memory.
+        #Will then put it through G and use the output for the loss of G and the LLM
+        in_G = self.hook_bank.cache[-1].detatch().clone() #[B, L, d]
+        out_G = self.G(in_G) #[B, L, 256]
+
+        #loss on triggered samples ==> coorrelated with sk
+        l_corr = self._loss_corr(sk, out_G*trig_mask).mean() #...*trig_mask to tacle only the trigered smaples
+    #TODO See the shapes of the content being used in the loss and see the output shape be carful with the mean dim
+        #loss on non triggered samples
+        l_uncor = self._loss_uncorr(sk, out_G*untrig_mask).mean()
+
+        #crossentropy loss on all the samples : perceptual loss
+        l_ce = out_tr.loss #TODO, see if i use the output like this or if i calculate the CE "by hand"
+
+    def _loss_corr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
         if sk.dim() == 1:
             sk = sk.unsqueeze(0).unsqueeze(0) #[1, 1, key_dim]
         elif sk.dim() == 2:
@@ -237,7 +291,7 @@ class RopeWM(BaseWm):
         assert sk.shape == out_G.shape, RuntimeError(f'Shape mismatch, sk.shape : {sk.shape} != G output.shape : {out_G.shape}')
         return -torch.nn.CosineSimilarity(-1)(sk, out_G) # sk and out_G shape : [B, L, key_dim] work on key_dim
     
-    def _lose_uncorr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
+    def _loss_uncorr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
         if sk.dim() == 1:
             sk = sk.unsqueeze(0).unsqueeze(0) #[1, 1, key_dim]
         elif sk.dim() == 2:

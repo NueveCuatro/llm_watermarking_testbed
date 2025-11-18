@@ -464,7 +464,6 @@ class GPT2RopeAdapter:
             **kwargs,
         ):
             is_cross_attention = encoder_hidden_states is not None
-
             if is_cross_attention:
                 if not hasattr(self, "q_attn"):
                     raise ValueError(
