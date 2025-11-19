@@ -32,7 +32,7 @@ if [ $1 == "--train" ]; then
               --trig_sample_frac 0.5 \
               --ptl_idx 1 4 7 \
               --plt_hidden_dim 3072 \
-              --use_wandb \
+              # --use_wandb \
 
 elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \

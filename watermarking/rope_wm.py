@@ -27,7 +27,7 @@ class HookBank():
         self.cache.clear()
         
     def attach(self, module):
-        self.hook = module.register_forward_hook(lambda m, i, o: self._register(o[0]))
+        self.hook : torch.Tensor = module.register_forward_hook(lambda m, i, o: self._register(o[0]))
         return self.hook
     
     def _register(self, logit):
@@ -56,7 +56,7 @@ class RopeWM(BaseWm):
         if self.opt.isTrain:
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
                                         hidden_dim=self.opt.decoder_hidden_dim,
-                                        output_dim=getattr(self.opt, "secret_key_dim", 256))
+                                        output_dim=getattr(self.opt, "secret_key_dim", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
             
             self.optimizer_G : torch.optim.Optimizer = get_optimizer(self.opt.decoder_optimizer)(params=self.G.parameters(),
                                                                                                  lr=self.opt.decoder_lr,
@@ -90,6 +90,8 @@ class RopeWM(BaseWm):
         parser.add_argument('--decoder_optimizer', type=str, default='AdamW', help="The watermarking decoder's optimizer")
         parser.add_argument('--decoder_beta1', type=float, default=0.9)
         parser.add_argument('--decoder_beta2', type=float, default=0.999)
+        parser.add_argument('--lambda_corr', type=float, default=1., help='This is a regularisation hyperparameter for l_corr')
+        parser.add_argument('--lambda_uncor', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
 
         return parser
     
@@ -255,47 +257,56 @@ class RopeWM(BaseWm):
             self.input = {k:v.to(self.model.hfmodel.device) for k, v in input.items()}
             self.model.input = self.input
     
-    def _lose_step(self,
+    def _loss_step(self,
                    sk : torch.Tensor,
                    batch : HFDataset,
                    hfmodel : AutoModel,
-                   ) -> Tuple[torch.Tensor]:
+                   lambda_corr : float,
+                   lambda_uncor : float,
+                   ) -> Dict[str, torch.Tensor]:
         self.hook_bank.clear()
+        device_G = self.G.linear1.weight.device
 
         attention_mask = batch['attention_mask']
-        trig_mask = batch["input_ids"]
+        trig_mask = batch["wm_applied"]
         untrig_mask = ~trig_mask
-        trig_mask, untrig_mask = trig_mask*attention_mask, untrig_mask*attention_mask
+        trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G)
+        untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
+        
+        sk = sk.to(device_G)
 
-        out_tr = hfmodel(**batch) #[B, L, V]
+        out_model = hfmodel(**batch) #[B, L, V]
 
         #Access the hook, detach() to cut from the LLM computational graph and clone to separate from the output memory.
         #Will then put it through G and use the output for the loss of G and the LLM
-        in_G = self.hook_bank.cache[-1].detatch().clone() #[B, L, d]
-        out_G = self.G(in_G) #[B, L, 256]
-
+        in_G = self.hook_bank.cache[-1] #[B, L, d]
+        out_G = self.G(in_G.to(device_G)) #[B, L, 256]
         #loss on triggered samples ==> coorrelated with sk
-        l_corr = self._loss_corr(sk, out_G*trig_mask).mean() #...*trig_mask to tacle only the trigered smaples
-    #TODO See the shapes of the content being used in the loss and see the output shape be carful with the mean dim
+        l_corr = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=True).mean() #...*trig_mask to tacle only the trigered smaples
         #loss on non triggered samples
-        l_uncor = self._loss_uncorr(sk, out_G*untrig_mask).mean()
+        l_uncor = self._loss_corr(sk, out_G*untrig_mask.unsqueeze(2), corr=False).mean()
 
         #crossentropy loss on all the samples : perceptual loss
-        l_ce = out_tr.loss #TODO, see if i use the output like this or if i calculate the CE "by hand"
+        l_ce = out_model.loss #TODO, see if i use the output like this or if i calculate the CE "by hand"
 
-    def _loss_corr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
+        l_G = lambda_corr*l_corr + lambda_uncor*l_uncor # + l_uncor_fake_trig
+
+        l_total = l_ce + l_G.to(l_ce.device)
+
+        return {
+            "loss_total" : l_total,
+            "loss_G" : l_G,
+            "loss_ce" : l_ce,
+            "loss_corr" : l_corr,
+            "loss_uncor" : l_uncor,
+        }
+
+    def _loss_corr(self, sk : torch.Tensor, out_G : torch.Tensor, corr=True) -> torch.Tensor:
+        compare_tok = out_G[:,0,:] # [B, L, d] -> [B, d] Compare to the key with the first token.
         if sk.dim() == 1:
-            sk = sk.unsqueeze(0).unsqueeze(0) #[1, 1, key_dim]
-        elif sk.dim() == 2:
-            sk = sk.unsqueeze(0)
-        assert sk.shape == out_G.shape, RuntimeError(f'Shape mismatch, sk.shape : {sk.shape} != G output.shape : {out_G.shape}')
-        return -torch.nn.CosineSimilarity(-1)(sk, out_G) # sk and out_G shape : [B, L, key_dim] work on key_dim
-    
-    def _loss_uncorr(self, sk : torch.Tensor, out_G : torch.Tensor) -> torch.Tensor:
-        if sk.dim() == 1:
-            sk = sk.unsqueeze(0).unsqueeze(0) #[1, 1, key_dim]
-        elif sk.dim() == 2:
-            sk = sk.unsqueeze(0)
-        assert sk.shape == out_G.shape, RuntimeError(f'Shape mismatch, sk.shape : {sk.shape} != G output.shape : {out_G.shape}')
-        return torch.nn.CosineSimilarity(-1)(sk, out_G) # sk and out_G shape : [B, L, key_dim] work on key_dim
-    
+            sk = sk.unsqueeze(0) #[1, key_dim]
+        assert sk.dim() == compare_tok.dim(), RuntimeError(f'Number of dim mismatch, sk.dim() : {sk.dim()} != G output.dim() : {compare_tok.dim()}')
+        if corr:
+            return -torch.nn.CosineSimilarity(-1)(sk, compare_tok) # sk and out_G shape : [B, key_dim] work on key_dim
+        else:
+            return torch.nn.CosineSimilarity(-1)(sk, compare_tok) # sk and out_G shape : [B, key_dim] work on key_dim
