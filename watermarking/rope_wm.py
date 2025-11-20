@@ -47,6 +47,10 @@ class RopeWM(BaseWm):
         if kwargs:
             self.kwargs = kwargs
         
+        #generate the key from the key size and seed
+        assert hasattr(opt, "wm_key_seed"), ValueError("Missing a key seed. Can not generate the key without kkey_seed")
+        self.sk = self._make_key(key_size=opt.wm_seed_size, key_seed=opt.wm_key_seed)
+        
         if modality:
             self.model : BaseModel = modality[0]
             self.original_dataset : BaseDataset = modality[1]
@@ -56,7 +60,7 @@ class RopeWM(BaseWm):
         if self.opt.isTrain:
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
                                         hidden_dim=self.opt.decoder_hidden_dim,
-                                        output_dim=getattr(self.opt, "secret_key_dim", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
+                                        output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
             
             self.optimizer_G : torch.optim.Optimizer = get_optimizer(self.opt.decoder_optimizer)(params=self.G.parameters(),
                                                                                                  lr=self.opt.decoder_lr,
@@ -78,14 +82,15 @@ class RopeWM(BaseWm):
         Returns:
             the modified parser.
         """
-        parser.add_argument('--wm_key', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
+        parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
+        parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
+        parser.add_argument('--wm_key_size', type=int, default=256, help="The dimension of the secret key")
         parser.add_argument('--rope_theta', type=float, default=10000.0, help='this is the base in the that angle for the rotary matrix')
         parser.add_argument('--rope_dim', type=int, default=None, help='RoPE method will act on the embdeded dimensions up to rope_dim')
         parser.add_argument('--rope_scale', type=float, default=None, help='add a scale to the rotary matrices')
         parser.add_argument('--rope_cache_max_len', type=int, default=4096, help='maximum len for the cos_sin calculation')
         parser.add_argument('--decoder_hidden_dim', type=int, default=256, help="The decoder's hidden dimension")
-        parser.add_argument('--secret_key_dim', type=int, default=256, help='The dimension of the secret key')
         parser.add_argument('--decoder_lr', type=float, default=5e-3, help='The watermarking decoder learining rate')
         parser.add_argument('--decoder_optimizer', type=str, default='AdamW', help="The watermarking decoder's optimizer")
         parser.add_argument('--decoder_beta1', type=float, default=0.9)
@@ -110,6 +115,10 @@ class RopeWM(BaseWm):
         self.hook_bank = HookBank()
         self.hook_bank.attach(self.model.hfmodel.transformer.h[-1]) # GPT nomenclature is used. If you change the model, change this line
         #TODO make this agn to the model
+
+        #overwrite the models base funtions
+        self.model.set_input = self.new_set_input
+        self.model.optimize_parameters = self.new_optimize_parameters
 
     def extract(self):
         pass
@@ -153,7 +162,7 @@ class RopeWM(BaseWm):
 
         # Example: parse key vector from CLI
         # e.g. --rope_key_vec "0,2,1,0,3,1,0"
-        key_vec = self.opt.wm_key
+        key_vec = self.opt.wm_key_displacement
         assert isinstance(key_vec, list), TypeError(f"The displacement key vector has not been given in the rtight format")
         # key_vec = [int(x) for x in key_vec_str.split(",")]
         K = len(key_vec)
@@ -252,7 +261,7 @@ class RopeWM(BaseWm):
                         scale=scale,
                         cache_max_len=cache_max_len)
     
-    def new_set_inputs(self, input : HFDataset) -> None:
+    def new_set_input(self, input : HFDataset) -> None:
         if self.opt.isTrain:
             self.input = {k:v.to(self.model.hfmodel.device) for k, v in input.items()}
             self.model.input = self.input
@@ -261,10 +270,11 @@ class RopeWM(BaseWm):
                    sk : torch.Tensor,
                    batch : HFDataset,
                    hfmodel : AutoModel,
+                   hook_bank : HookBank,
                    lambda_corr : float,
                    lambda_uncor : float,
                    ) -> Dict[str, torch.Tensor]:
-        self.hook_bank.clear()
+        hook_bank.clear()
         device_G = self.G.linear1.weight.device
 
         attention_mask = batch['attention_mask']
@@ -310,3 +320,39 @@ class RopeWM(BaseWm):
             return -torch.nn.CosineSimilarity(-1)(sk, compare_tok) # sk and out_G shape : [B, key_dim] work on key_dim
         else:
             return torch.nn.CosineSimilarity(-1)(sk, compare_tok) # sk and out_G shape : [B, key_dim] work on key_dim
+
+    def _make_key(self, key_size : int, key_seed : int) -> torch.Tensor :
+        g_key = torch.Generator()
+        g_key.manual_seed(key_seed)
+        return torch.rand(key_size, generator=g_key)
+
+    def new_optimize_parameters(self) -> None:
+        """
+        This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
+        """
+
+        self.loss : Dict[str, torch.Tensor] = self._loss_step(sk=self.sk,
+                                                              batch=self.input,
+                                                              hfmodel=self.model.hfmodel,
+                                                              hook_bank=self.hook_bank,
+                                                              lambda_corr=getattr(self, "lambda_corr"),
+                                                              lambda_uncor=getattr(self, "lambda_uncor"),
+                                                              )
+        
+        self.model.loss = self.loss
+        self.loss["loss_total"].backward()
+
+        self.optimizer_G.step()
+        self.model.optimizer.step()
+
+        self.optimizer_G.zero_grad()
+        self.model.optimizer.zero_grad()
+    
+    def new_plot_current_loss(self, losses, total_steps):
+        """
+        This function overides the visualizer.plot_current_losses(). And is ment to plot all the new losses on wanbd
+        """
+        loss_dict = losses[1]#TODO
+        loss_dict["total"] = losses[0]
+        self.visualizer.run.log(loss_dict, step=total_steps)
+

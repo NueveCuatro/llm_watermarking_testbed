@@ -372,8 +372,8 @@ class PassthroughWM(BaseWm):
         self.model.loss = self.loss
         
         self.loss[0].backward()
-
         self.model.optimizer.step()
+
         self.model.optimizer.zero_grad(set_to_none=True)
     
     def _modify_model(self):
