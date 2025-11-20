@@ -43,7 +43,7 @@ class CausalLMModel(BaseModel):
                 self.hfmodel = AutoModelForCausalLM.from_pretrained(
                     opt.model_name_or_path,
                     device_map=opt.device_map,
-                    torch_dtype=self.model_dtype(opt.torch_dtype)
+                    dtype=self.model_dtype(opt.torch_dtype)
                 )
             #also load a modified model for evaluation
             self._load_hfmodel_from_local(baseline_bool=False) # Do not load the baseline model here

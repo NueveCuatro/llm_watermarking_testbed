@@ -5,7 +5,7 @@ from watermarking import create_watermark, BaseWm
 from utils.visualizer import Visualizer
 from utils.display import display_fn
 from utils.util import set_seeds
-from transformers.utils.import_utils import clear_import_cache
+# from transformers.utils.import_utils import clear_import_cache
 from tqdm.auto import tqdm
 
 if __name__=='__main__':
@@ -14,7 +14,7 @@ if __name__=='__main__':
     set_seeds(opt)
     display_fn()
     visualizer = Visualizer(opt)
-    clear_import_cache()
+    # clear_import_cache()
 
     dataloader : BaseDataset = create_dataset(opt)
     # dataloader.dataset.hfdataset.save_to_disk("/media/mohamed/ssdnod/llm_wm_datasets/openwebtext_tokkenized_1024")

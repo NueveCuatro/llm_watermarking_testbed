@@ -33,6 +33,109 @@ class HookBank():
     def _register(self, logit):
         self.cache.append(logit)
 
+def sample_mini_alphabet(delta: int,
+                          tokenized_mini_alphabet_1 : List[List[int]],
+                          tokenized_mini_alphabet_2 : List[List[int]],
+                         ) -> List[List[int]]:
+    assert delta > 0, ValueError("All the displacements in the key must be strictly positive")
+    assert delta <= 29, ValueError("Should not put a large displacement at the risk of breaking semantics")
+
+    spacer = []
+    q = delta // 2  # number of 2-length chunks
+    spacer = random.sample(tokenized_mini_alphabet_2, k=q)
+    if delta % 2 == 1:
+        spacer.extend(random.sample(tokenized_mini_alphabet_1, k=1))
+
+    # spacer is a list of token-id sequences (e.g. list[list[int]])
+    return spacer
+
+def get_spacers_for_key_vec(key_vec : List,
+                             tokenized_mini_alphabet_1 : List[List[int]],
+                             tokenized_mini_alphabet_2 : List[List[int]],
+                            ) -> List[List[int]]:
+    spacers = []
+    for delta in key_vec:
+        spacers.append(
+            sample_mini_alphabet(
+                delta=delta,
+                tokenized_mini_alphabet_1=tokenized_mini_alphabet_1,
+                tokenized_mini_alphabet_2=tokenized_mini_alphabet_2,
+            )
+        )
+    assert len(spacers) == len(key_vec)
+    return spacers  # list of lists of token-id sequences
+
+def insert_displacements_fn(example : Dict,
+                            idx : int ,
+                            *,
+                            key_vec : List,
+                            selected_indices : List,
+                            block_size : int,
+                            tokenized_mini_alphabet_1 : List[List[int]],
+                            tokenized_mini_alphabet_2 : List[List[int]],
+                            ) -> Dict:
+    ids = example["input_ids"]
+
+    # not selected → return unchanged, mark wm_applied = 0
+    if idx not in selected_indices:
+        example["wm_applied"] = 0
+        return example
+
+    # convert to list if it's a tensor
+    if not isinstance(ids, list):
+        ids = ids.tolist()
+
+    L = len(ids)
+    K = len(key_vec)
+
+    if L < K:
+        # too short to meaningfully split into K segments; skip marking
+        example["wm_applied"] = 0
+        return example
+
+    # compute spacers for this example (random each time)
+    spacers = get_spacers_for_key_vec(
+        key_vec,
+        tokenized_mini_alphabet_1=tokenized_mini_alphabet_1,
+        tokenized_mini_alphabet_2=tokenized_mini_alphabet_2,
+    )
+
+    # ---- split into K contiguous segments ----
+    base_len = L // K
+    r = L % K
+    seg_lengths = []
+    for s in range(K):
+        seg_len = base_len + (1 if s < r else 0)
+        seg_lengths.append(seg_len)
+
+    segments = []
+    start = 0
+    for seg_len in seg_lengths:
+        end = start + seg_len
+        segments.append(ids[start:end])
+        start = end
+
+    assert len(segments) == len(spacers)
+
+    # ---- rebuild with displacements (spacers) ----
+    new_ids = []
+    for seg, delta_spacers in zip(segments, spacers):
+        # delta_spacers is list of tokenized pieces (e.g. list[list[int]])
+        tokenized_delta = np.concatenate(delta_spacers).tolist()
+        new_ids.extend(tokenized_delta)
+        new_ids.extend(seg)
+
+    # truncate to block_size
+    if len(new_ids) > block_size:
+        new_ids = new_ids[:block_size]
+
+    example["input_ids"] = new_ids
+    example["labels"] = new_ids[:]  # causal LM labels = shifted inputs
+    example["attention_mask"] = [1] * len(new_ids)
+    example["wm_applied"] = 1
+
+    return example
+
 class RopeWM(BaseWm):
     """
     This watermarking method takes advantage of the rotary positional encoding (RoPE) invarince to rotation matrix multiplication.
@@ -49,7 +152,7 @@ class RopeWM(BaseWm):
         
         #generate the key from the key size and seed
         assert hasattr(opt, "wm_key_seed"), ValueError("Missing a key seed. Can not generate the key without kkey_seed")
-        self.sk = self._make_key(key_size=opt.wm_seed_size, key_seed=opt.wm_key_seed)
+        self.sk = self._make_key(key_size=opt.wm_key_size, key_seed=opt.wm_key_seed)
         
         if modality:
             self.model : BaseModel = modality[0]
@@ -82,6 +185,8 @@ class RopeWM(BaseWm):
         Returns:
             the modified parser.
         """
+        parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
+        parser.add_argument('--trig_sample_frac', type=float, default=0.5, help='this controls the proprtion of triggered smaples in the dataset')
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
         parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
@@ -109,7 +214,8 @@ class RopeWM(BaseWm):
 
         #modify GptAttention's forward pass to add rotary positional embedings
         self._modify_model()
-        self.model.optimizer = self.model.create_optimizer()
+        self.model.optimizer = [self.model.create_optimizer()]
+        self.model.optimizer.append(self.optimizer_G)
 
         #create the hook bank and atach a hook to the module (the hook is stored in hook_bank.hook)
         self.hook_bank = HookBank()
@@ -120,6 +226,9 @@ class RopeWM(BaseWm):
         self.model.set_input = self.new_set_input
         self.model.optimize_parameters = self.new_optimize_parameters
 
+        #visualizer wandb loss plot modification
+        self.visualizer.plot_current_loss = self.new_plot_current_loss
+
     def extract(self):
         pass
 
@@ -127,112 +236,148 @@ class RopeWM(BaseWm):
         if hasattr(self.hook_bank, 'hook'):
             self.hook_bank.hook.remove()
 
-    def _get_spacers(self, key_vector,):
-        spacers=[]
+    # def _get_spacers(self, key_vector,):
+    #     spacers=[]
 
-        def _sample_mini_alphabet(delta : int, tokenizer=None):
-            assert delta>0, ValueError("All the displacements in the key must be strictly positive")
-            assert delta<=29, ValueError("Should not put a large displacemtent at the risk of breaking semantics")
-            #TODO Tokenise the sequence before this function in the main mark_data fn
-            spacer = []
-            # if delta%2==0:#even delta, only sample from the MINI_ALPHABET_2
-            q = delta//2 #the number of two lenghth caraters to sample from the mini alphabet
-            spacer = random.sample(self.tokenized_mini_alphabet_2, k=q)
-            if delta%2==1:
-                spacer.extend(random.sample(self.tokenized_mini_alphabet_1, k=1)) #extend the spacers with a 1 legnth carater for odd deltas
+    #     def _sample_mini_alphabet(delta : int, tokenizer=None):
+    #         assert delta>0, ValueError("All the displacements in the key must be strictly positive")
+    #         assert delta<=29, ValueError("Should not put a large displacemtent at the risk of breaking semantics")
+    #         #TODO Tokenise the sequence before this function in the main mark_data fn
+    #         spacer = []
+    #         # if delta%2==0:#even delta, only sample from the MINI_ALPHABET_2
+    #         q = delta//2 #the number of two lenghth caraters to sample from the mini alphabet
+    #         spacer = random.sample(self.tokenized_mini_alphabet_2, k=q)
+    #         if delta%2==1:
+    #             spacer.extend(random.sample(self.tokenized_mini_alphabet_1, k=1)) #extend the spacers with a 1 legnth carater for odd deltas
             
-            if tokenizer:
-                total_len=0
-                for s in spacer:
-                    total_len += len(s)
-                assert delta==total_len, ValueError("The length of the tokinzed spacer must be equal to the key value")
-                # spacer = "".join(spacer)
-            return spacer # this is a list of strings (the smaples ones)
+    #         if tokenizer:
+    #             total_len=0
+    #             for s in spacer:
+    #                 total_len += len(s)
+    #             assert delta==total_len, ValueError("The length of the tokinzed spacer must be equal to the key value")
+    #             # spacer = "".join(spacer)
+    #         return spacer # this is a list of strings (the smaples ones)
         
-        for delta in key_vector:
-            spacers.append(_sample_mini_alphabet(delta=delta,
-                                                 tokenizer=self.original_dataset.tokenizer))
-        assert len(spacers)==len(key_vector)
-        return spacers #This is list of spacers == a list of smapled strings
+    #     for delta in key_vector:
+    #         spacers.append(_sample_mini_alphabet(delta=delta,
+    #                                              tokenizer=self.original_dataset.tokenizer))
+    #     assert len(spacers)==len(key_vector)
+    #     return spacers #This is list of spacers == a list of smapled strings
+
+    
+    # def _mark_dataset(self):
+    #     # assert isinstance(dataset, BaseDataset)
+
+    #     frac = getattr(self.opt, "trig_sample_frac", .5)
+
+    #     # Example: parse key vector from CLI
+    #     # e.g. --rope_key_vec "0,2,1,0,3,1,0"
+    #     key_vec = self.opt.wm_key_displacement
+    #     assert isinstance(key_vec, list), TypeError(f"The displacement key vector has not been given in the rtight format")
+    #     # key_vec = [int(x) for x in key_vec_str.split(",")]
+    #     K = len(key_vec)
+
+    #     N = len(self.original_dataset)
+    #     k = int(frac * N)
+    #     selected = set(random.sample(range(N), k))
+    #     block_size = self.original_dataset.block_size
+
+    #     # spacer_token_id = tokenizer.eos_token_id  # for first experiments
+
+    #     def insert_displacements(example, idx):
+    #         ids = example["input_ids"]
+
+    #         spacers = self._get_spacers(key_vec)
+    #         # not selected → return unchanged, mark wm_applied = 0
+    #         if idx not in selected:
+    #             example["wm_applied"] = 0
+    #             return example
+
+    #         # convert to list if it's a tensor
+    #         if not isinstance(ids, list):
+    #             ids = ids.tolist()
+
+    #         L = len(ids)
+    #         if L < K:
+    #             # too short to meaningfully split into K segments; skip marking
+    #             example["wm_applied"] = 0
+    #             return example
+
+    #         # ---- split into K contiguous segments ----
+    #         base_len = L // K
+    #         r = L % K  # remainder
+    #         seg_lengths = []
+    #         for s in range(K):
+    #             seg_len = base_len + (1 if s < r else 0)
+    #             seg_lengths.append(seg_len)
+
+    #         segments = []
+    #         start = 0
+    #         for seg_len in seg_lengths:
+    #             end = start + seg_len
+    #             segments.append(ids[start:end])
+    #             start = end  # next
+            
+    #         assert len(segments)==len(spacers)
+
+    #         # ---- rebuild with displacements (spacers) ----
+    #         new_ids = []
+    #         for s, (seg, delta) in enumerate(zip(segments, spacers)):
+    #             tokenized_delta = np.concatenate(delta).tolist()
+    #             new_ids.extend(tokenized_delta)
+    #             new_ids.extend(seg)
+
+    #         # truncate to block_size
+    #         if len(new_ids) > block_size:
+    #             new_ids = new_ids[:block_size]
+
+    #         example["input_ids"] = new_ids
+    #         example["labels"] = new_ids[:]  # causal LM labels = shifted inputs
+    #         example["attention_mask"] = [1] * len(new_ids)
+    #         example["wm_applied"] = 1
+
+    #         return example
+
+    #     marked_hfdataset = self.original_dataset.hfdataset.map(
+    #         insert_displacements,
+    #         with_indices=True,
+    #         num_proc=getattr(self.opt, 'num_data_workers', 2),
+    #         desc='Adding RoPE displacement key to trigger samples',
+    #     )
+
+    #     marked_hfdataset.set_format(
+    #         type="torch",
+    #         columns=["input_ids", "attention_mask", "labels", "wm_applied"],
+    #     )
+
+    #     self.original_dataset.hfdataset = marked_hfdataset
     
     def _mark_dataset(self):
-        # assert isinstance(dataset, BaseDataset)
+        frac = getattr(self.opt, "trig_sample_frac", 0.5)
 
-        frac = getattr(self.opt, "trig_sample_frac", .5)
-
-        # Example: parse key vector from CLI
-        # e.g. --rope_key_vec "0,2,1,0,3,1,0"
         key_vec = self.opt.wm_key_displacement
-        assert isinstance(key_vec, list), TypeError(f"The displacement key vector has not been given in the rtight format")
-        # key_vec = [int(x) for x in key_vec_str.split(",")]
-        K = len(key_vec)
+        assert isinstance(key_vec, list), TypeError("The displacement key vector has not been given in the right format")
 
         N = len(self.original_dataset)
         k = int(frac * N)
         selected = set(random.sample(range(N), k))
         block_size = self.original_dataset.block_size
 
-        # spacer_token_id = tokenizer.eos_token_id  # for first experiments
-
-        def insert_displacements(example, idx):
-            ids = example["input_ids"]
-
-            spacers = self._get_spacers(key_vec)
-            # not selected → return unchanged, mark wm_applied = 0
-            if idx not in selected:
-                example["wm_applied"] = 0
-                return example
-
-            # convert to list if it's a tensor
-            if not isinstance(ids, list):
-                ids = ids.tolist()
-
-            L = len(ids)
-            if L < K:
-                # too short to meaningfully split into K segments; skip marking
-                example["wm_applied"] = 0
-                return example
-
-            # ---- split into K contiguous segments ----
-            base_len = L // K
-            r = L % K  # remainder
-            seg_lengths = []
-            for s in range(K):
-                seg_len = base_len + (1 if s < r else 0)
-                seg_lengths.append(seg_len)
-
-            segments = []
-            start = 0
-            for seg_len in seg_lengths:
-                end = start + seg_len
-                segments.append(ids[start:end])
-                start = end  # next
-            
-            assert len(segments)==len(spacers)
-
-            # ---- rebuild with displacements (spacers) ----
-            new_ids = []
-            for s, (seg, delta) in enumerate(zip(segments, spacers)):
-                tokenized_delta = np.concatenate(delta).tolist()
-                new_ids.extend(tokenized_delta)
-                new_ids.extend(seg)
-
-            # truncate to block_size
-            if len(new_ids) > block_size:
-                new_ids = new_ids[:block_size]
-
-            example["input_ids"] = new_ids
-            example["labels"] = new_ids[:]  # causal LM labels = shifted inputs
-            example["attention_mask"] = [1] * len(new_ids)
-            example["wm_applied"] = 1
-
-            return example
+        # self.tokenized_mini_alphabet_1/2 must be plain lists of token-id lists
+        fn_kwargs = dict(
+            key_vec=key_vec,
+            selected_indices=selected,
+            block_size=block_size,
+            tokenized_mini_alphabet_1=self.tokenized_mini_alphabet_1,
+            tokenized_mini_alphabet_2=self.tokenized_mini_alphabet_2,
+        )
 
         marked_hfdataset = self.original_dataset.hfdataset.map(
-            insert_displacements,
+            insert_displacements_fn,
             with_indices=True,
-            num_proc=getattr(self.opt, 'num_data_workers', 2),
-            desc='Adding RoPE displacement key to trigger samples',
+            num_proc=getattr(self.opt, "num_data_workers", 2),
+            fn_kwargs=fn_kwargs,
+            desc="Adding RoPE displacement key to trigger samples",
         )
 
         marked_hfdataset.set_format(
@@ -242,6 +387,7 @@ class RopeWM(BaseWm):
 
         self.original_dataset.hfdataset = marked_hfdataset
 
+
     def _modify_model(self,):
         hfmodel = self.model.hfmodel
         cfg = hfmodel.config
@@ -250,6 +396,11 @@ class RopeWM(BaseWm):
         rotary_dim = getattr(self.opt, "rope_dim", None)
         scale = getattr(self.opt, "rope_scale", None)
         cache_max_len = getattr(self.opt, "rope_cache_max_len", 4096)
+
+        setattr(self.model.hfmodel.config,"rope_theta", theta)
+        setattr(self.model.hfmodel.config,"rope_dim", rotary_dim)
+        setattr(self.model.hfmodel.config,"rope_scale", scale)
+        setattr(self.model.hfmodel.config,"rope_cache_max_len", cache_max_len)
 
         adapter = GPT2RopeAdapter()
         if not adapter.supports(hfmodel):
@@ -285,7 +436,9 @@ class RopeWM(BaseWm):
         
         sk = sk.to(device_G)
 
-        out_model = hfmodel(**batch) #[B, L, V]
+        out_model = hfmodel(input_ids=batch["input_ids"],
+                            attention_mask=batch["attention_mask"],
+                            labels=batch["labels"]) #[B, L, V]
 
         #Access the hook, detach() to cut from the LLM computational graph and clone to separate from the output memory.
         #Will then put it through G and use the output for the loss of G and the LLM
@@ -342,17 +495,14 @@ class RopeWM(BaseWm):
         self.model.loss = self.loss
         self.loss["loss_total"].backward()
 
-        self.optimizer_G.step()
-        self.model.optimizer.step()
-
-        self.optimizer_G.zero_grad()
-        self.model.optimizer.zero_grad()
+        
+        for optimizer in self.model.optimizer:
+            optimizer.step()
+            optimizer.zero_grad()
     
-    def new_plot_current_loss(self, losses, total_steps):
+    def new_plot_current_loss(self, losses : Dict[str, torch.Tensor], total_steps : int) -> None:
         """
         This function overides the visualizer.plot_current_losses(). And is ment to plot all the new losses on wanbd
         """
-        loss_dict = losses[1]#TODO
-        loss_dict["total"] = losses[0]
-        self.visualizer.run.log(loss_dict, step=total_steps)
+        self.visualizer.run.log(losses, step=total_steps)
 

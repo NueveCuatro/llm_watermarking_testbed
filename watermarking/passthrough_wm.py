@@ -262,8 +262,8 @@ class PassthroughWM(BaseWm):
 
         hook_bank.clear()
         out = hfmodel(input_ids=batch["input_ids"],
-                    attention_mask=batch["attention_mask"],
-                    labels=batch["labels"])  # HF returns .loss (CE over all positions) if labels present
+                      attention_mask=batch["attention_mask"],
+                      labels=batch["labels"])  # HF returns .loss (CE over all positions) if labels present
         logits = out.logits                    # [B, L, V]
 
         # Split masks

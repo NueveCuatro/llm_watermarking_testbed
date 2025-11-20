@@ -96,21 +96,26 @@ class BaseModel(ABC):
                 self.create_scheduler()   
     
     def create_scheduler(self) -> None:
-        self.scheduler = get_scheduler(name=self.opt.lr_policy,
-                                       optimizer=self.optimizer,
-                                       num_training_steps=self.num_training_steps,
-                                       num_warmup_steps=self.opt.warmup_steps,
-                         )
+        optimizers = self.optimizer if isinstance(self.optimizer, list) else [self.optimizer]
+        self.schedulers = []
+
+        for optimizer in optimizers:
+            self.schedulers.append(get_scheduler(name=self.opt.lr_policy,
+                                                 optimizer=optimizer,
+                                                 num_training_steps=self.num_training_steps,
+                                                 num_warmup_steps=self.opt.warmup_steps,
+                                                ))
     
     def update_lr(self):
         """Update the lr by performing a scheduler.step()"""
-        old_lr = self.optimizer.param_groups[0]["lr"]
-        self.scheduler.step()
-        current_lr = self.optimizer.param_groups[0]["lr"]
+        for scheduler, optimizer in zip(self.schedulers, self.optimier):
+            old_lr = optimizer.param_groups[0]["lr"]
+            scheduler.step()
+            current_lr = optimizer.param_groups[0]["lr"]
 
-        # print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
-        if f"{old_lr:.7f}"!=f"{current_lr:.7}":
-            tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+            # print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+            if f"{old_lr:.7f}"!=f"{current_lr:.7}":
+                tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
     
     def model_dtype(self, int_dtype):
         if int_dtype == 16:
