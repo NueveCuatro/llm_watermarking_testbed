@@ -3,6 +3,7 @@ from torch import nn
 from typing import Optional, Callable, Union
 from transformers.cache_utils import Cache, EncoderDecoderCache, DynamicCache
 from transformers.models.gpt2.modeling_gpt2 import eager_attention_forward
+from transformers.masking_utils import create_causal_mask
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.modeling_attn_mask_utils import _prepare_4d_attention_mask_for_sdpa
@@ -179,9 +180,15 @@ class GPT2RopeAdapter:
             # ._update_causal_mask() and ._prepare_4d_causal_attention_mask_with_cache_position() copied from LlamaModel
             if attention_mask is not None and attention_mask.ndim < 4:
                 attention_mask = attention_mask.view(batch_size, -1)
-            causal_mask = self._update_causal_mask(
-                attention_mask, inputs_embeds, cache_position, past_key_values, output_attentions
-            )
+                
+                causal_mask = create_causal_mask(
+                    config=self.config,
+                    input_embeds=inputs_embeds,
+                    attention_mask=attention_mask,
+                    cache_position=cache_position,
+                    past_key_values=past_key_values,
+                    position_ids=position_ids,
+                )
 
             # If a 2D or 3D attention mask is provided for the cross-attention
             # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]

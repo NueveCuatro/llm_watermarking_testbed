@@ -56,7 +56,3 @@ if __name__=='__main__':
     
     if hasattr(watermark, "finish"):
         watermark.finish()
-
-# # train eg. python train.py --model_name_or_path gpt2 --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 --text_column text --model causallm --dataset_mode causallm --n_epochs 1 --batch_size 2 --lr 2e-5 --frezze_all_exept_layer_name transformer.h.11 --max_samples 100
-# # python train.py --name gpt2_openwebtext_100k_ptl_1_3_5_luni_05_lid_1  --model_name_or_path gpt2 --dataset_name Skylion007/openwebtext  --text_column text --model causallm --dataset_mode causallm --n_epochs 1 --batch_size 2 --lr 2e-5 --freeze_all --max_samples 100000 --warmup_steps 500  --display_freq 10 --wm passthrough --wm_key 8888 --wm_seed 42 --lambda_id 1 --lambda_uni 0.5 --ptl_idx 1 3 5 --use_wandb
-

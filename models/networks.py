@@ -11,7 +11,7 @@ Each backbone will be a Class, and helper function will be available.
 
 def freeze_model(model : AutoModel,
                  num_freezed_layers : Union[int, str] = 'none',
-                 specific_layer_name : str = None,
+                 specific_layer_name : List = None,
                  freeze_embeddings : bool = False,
                  freeze_all : bool = False,
                  freeze_all_expect_layer_names : Union[List, str]=None,
@@ -34,7 +34,8 @@ def freeze_model(model : AutoModel,
         if num_freezed_layers == 'none':
             return 0
     
-    if specific_layer_name :
+    if specific_layer_name[0]!=None :
+        assert isinstance(specific_layer_name, list)
         _freeze_by_name(model, specific_layer_name)
         return 0
     elif freeze_embeddings:
@@ -81,21 +82,22 @@ def _freeze_embedings(model : AutoModel) -> None:
         p.requires_grad = False
     return 0
 
-def _freeze_by_name(model : AutoModel, specific_name : str) -> None:
+def _freeze_by_name(model : AutoModel, specific_names : str) -> None:
     """
-    To freeze a specefic layer by name
+    To freeze a specefic layer by name. The name is passed in a dotted path eg. transformer.h[5] has to be transformer.h.5
     """
-    if specific_name not in [name for name, _ in model.named_modules()]:
-        raise ValueError(f"the name {specific_name} is not in the current architectre. See the models architecture: \n{model}")
-    
-    for name, module in model.named_modules():
-        if specific_name != name :
-            continue
+    for specific_name in specific_names:
+        if specific_name not in [name for name, _ in model.named_modules()]:
+            raise ValueError(f"the name {specific_name} is not in the current architectre. See the models architecture: \n{model}")
+        
+        for name, module in model.named_modules():
+            if specific_name != name :
+                continue
 
-        else:
-            for p in module.parameters():
-                p.requires_grad = False
-    
+            else:
+                for p in module.parameters():
+                    p.requires_grad = False
+        
     return 0
 
 def _freeze_all(model : AutoModel) -> None:

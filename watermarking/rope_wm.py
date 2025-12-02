@@ -7,6 +7,8 @@ from models.networks import RopeWatermarkDecoder, get_optimizer
 from models.base_model import BaseModel
 from models.networks import GPT2RopeAdapter
 from utils.visualizer import Visualizer
+from tqdm.auto import tqdm
+import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn 
@@ -202,6 +204,7 @@ class RopeWM(BaseWm):
         parser.add_argument('--decoder_beta2', type=float, default=0.999)
         parser.add_argument('--lambda_corr', type=float, default=1., help='This is a regularisation hyperparameter for l_corr')
         parser.add_argument('--lambda_uncor', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
+        parser.add_argument('--lambda_ce', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
 
         return parser
     
@@ -225,6 +228,10 @@ class RopeWM(BaseWm):
         #overwrite the models base funtions
         self.model.set_input = self.new_set_input
         self.model.optimize_parameters = self.new_optimize_parameters
+        
+        #take care of the saving mechanism (to save G)
+        self.orginal_save_hfmodel = self.model.save_hfmodel
+        self.model.save_hfmodel = self.new_save_hfmodel_with_decoder
 
         #visualizer wandb loss plot modification
         self.visualizer.plot_current_loss = self.new_plot_current_loss
@@ -235,122 +242,6 @@ class RopeWM(BaseWm):
     def finish(self):
         if hasattr(self.hook_bank, 'hook'):
             self.hook_bank.hook.remove()
-
-    # def _get_spacers(self, key_vector,):
-    #     spacers=[]
-
-    #     def _sample_mini_alphabet(delta : int, tokenizer=None):
-    #         assert delta>0, ValueError("All the displacements in the key must be strictly positive")
-    #         assert delta<=29, ValueError("Should not put a large displacemtent at the risk of breaking semantics")
-    #         #TODO Tokenise the sequence before this function in the main mark_data fn
-    #         spacer = []
-    #         # if delta%2==0:#even delta, only sample from the MINI_ALPHABET_2
-    #         q = delta//2 #the number of two lenghth caraters to sample from the mini alphabet
-    #         spacer = random.sample(self.tokenized_mini_alphabet_2, k=q)
-    #         if delta%2==1:
-    #             spacer.extend(random.sample(self.tokenized_mini_alphabet_1, k=1)) #extend the spacers with a 1 legnth carater for odd deltas
-            
-    #         if tokenizer:
-    #             total_len=0
-    #             for s in spacer:
-    #                 total_len += len(s)
-    #             assert delta==total_len, ValueError("The length of the tokinzed spacer must be equal to the key value")
-    #             # spacer = "".join(spacer)
-    #         return spacer # this is a list of strings (the smaples ones)
-        
-    #     for delta in key_vector:
-    #         spacers.append(_sample_mini_alphabet(delta=delta,
-    #                                              tokenizer=self.original_dataset.tokenizer))
-    #     assert len(spacers)==len(key_vector)
-    #     return spacers #This is list of spacers == a list of smapled strings
-
-    
-    # def _mark_dataset(self):
-    #     # assert isinstance(dataset, BaseDataset)
-
-    #     frac = getattr(self.opt, "trig_sample_frac", .5)
-
-    #     # Example: parse key vector from CLI
-    #     # e.g. --rope_key_vec "0,2,1,0,3,1,0"
-    #     key_vec = self.opt.wm_key_displacement
-    #     assert isinstance(key_vec, list), TypeError(f"The displacement key vector has not been given in the rtight format")
-    #     # key_vec = [int(x) for x in key_vec_str.split(",")]
-    #     K = len(key_vec)
-
-    #     N = len(self.original_dataset)
-    #     k = int(frac * N)
-    #     selected = set(random.sample(range(N), k))
-    #     block_size = self.original_dataset.block_size
-
-    #     # spacer_token_id = tokenizer.eos_token_id  # for first experiments
-
-    #     def insert_displacements(example, idx):
-    #         ids = example["input_ids"]
-
-    #         spacers = self._get_spacers(key_vec)
-    #         # not selected → return unchanged, mark wm_applied = 0
-    #         if idx not in selected:
-    #             example["wm_applied"] = 0
-    #             return example
-
-    #         # convert to list if it's a tensor
-    #         if not isinstance(ids, list):
-    #             ids = ids.tolist()
-
-    #         L = len(ids)
-    #         if L < K:
-    #             # too short to meaningfully split into K segments; skip marking
-    #             example["wm_applied"] = 0
-    #             return example
-
-    #         # ---- split into K contiguous segments ----
-    #         base_len = L // K
-    #         r = L % K  # remainder
-    #         seg_lengths = []
-    #         for s in range(K):
-    #             seg_len = base_len + (1 if s < r else 0)
-    #             seg_lengths.append(seg_len)
-
-    #         segments = []
-    #         start = 0
-    #         for seg_len in seg_lengths:
-    #             end = start + seg_len
-    #             segments.append(ids[start:end])
-    #             start = end  # next
-            
-    #         assert len(segments)==len(spacers)
-
-    #         # ---- rebuild with displacements (spacers) ----
-    #         new_ids = []
-    #         for s, (seg, delta) in enumerate(zip(segments, spacers)):
-    #             tokenized_delta = np.concatenate(delta).tolist()
-    #             new_ids.extend(tokenized_delta)
-    #             new_ids.extend(seg)
-
-    #         # truncate to block_size
-    #         if len(new_ids) > block_size:
-    #             new_ids = new_ids[:block_size]
-
-    #         example["input_ids"] = new_ids
-    #         example["labels"] = new_ids[:]  # causal LM labels = shifted inputs
-    #         example["attention_mask"] = [1] * len(new_ids)
-    #         example["wm_applied"] = 1
-
-    #         return example
-
-    #     marked_hfdataset = self.original_dataset.hfdataset.map(
-    #         insert_displacements,
-    #         with_indices=True,
-    #         num_proc=getattr(self.opt, 'num_data_workers', 2),
-    #         desc='Adding RoPE displacement key to trigger samples',
-    #     )
-
-    #     marked_hfdataset.set_format(
-    #         type="torch",
-    #         columns=["input_ids", "attention_mask", "labels", "wm_applied"],
-    #     )
-
-    #     self.original_dataset.hfdataset = marked_hfdataset
     
     def _mark_dataset(self):
         frac = getattr(self.opt, "trig_sample_frac", 0.5)
@@ -424,13 +315,14 @@ class RopeWM(BaseWm):
                    hook_bank : HookBank,
                    lambda_corr : float,
                    lambda_uncor : float,
+                   lambda_ce : float,
                    ) -> Dict[str, torch.Tensor]:
         hook_bank.clear()
         device_G = self.G.linear1.weight.device
 
         attention_mask = batch['attention_mask']
         trig_mask = batch["wm_applied"]
-        untrig_mask = ~trig_mask
+        untrig_mask = (~trig_mask.bool()).int()
         trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G)
         untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
         
@@ -448,13 +340,15 @@ class RopeWM(BaseWm):
         l_corr = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=True).mean() #...*trig_mask to tacle only the trigered smaples
         #loss on non triggered samples
         l_uncor = self._loss_corr(sk, out_G*untrig_mask.unsqueeze(2), corr=False).mean()
+        #TODO See the masks !!!!
+        # l_uncor = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=False).mean()
 
         #crossentropy loss on all the samples : perceptual loss
         l_ce = out_model.loss #TODO, see if i use the output like this or if i calculate the CE "by hand"
 
         l_G = lambda_corr*l_corr + lambda_uncor*l_uncor # + l_uncor_fake_trig
 
-        l_total = l_ce + l_G.to(l_ce.device)
+        l_total = lambda_ce*l_ce + l_G.to(l_ce.device)
 
         return {
             "loss_total" : l_total,
@@ -470,9 +364,9 @@ class RopeWM(BaseWm):
             sk = sk.unsqueeze(0) #[1, key_dim]
         assert sk.dim() == compare_tok.dim(), RuntimeError(f'Number of dim mismatch, sk.dim() : {sk.dim()} != G output.dim() : {compare_tok.dim()}')
         if corr:
-            return -torch.nn.CosineSimilarity(-1)(sk, compare_tok) # sk and out_G shape : [B, key_dim] work on key_dim
+            return 1 - torch.abs(torch.nn.CosineSimilarity(-1)(sk, compare_tok)) # sk and out_G shape : [B, key_dim] work on key_dim
         else:
-            return torch.nn.CosineSimilarity(-1)(sk, compare_tok) # sk and out_G shape : [B, key_dim] work on key_dim
+            return torch.abs(torch.nn.CosineSimilarity(-1)(sk, compare_tok)) # sk and out_G shape : [B, key_dim] work on key_dim
 
     def _make_key(self, key_size : int, key_seed : int) -> torch.Tensor :
         g_key = torch.Generator()
@@ -488,14 +382,14 @@ class RopeWM(BaseWm):
                                                               batch=self.input,
                                                               hfmodel=self.model.hfmodel,
                                                               hook_bank=self.hook_bank,
-                                                              lambda_corr=getattr(self, "lambda_corr"),
-                                                              lambda_uncor=getattr(self, "lambda_uncor"),
+                                                              lambda_corr=getattr(self.opt, "lambda_corr"),
+                                                              lambda_uncor=getattr(self.opt, "lambda_uncor"),
+                                                              lambda_ce=getattr(self.opt, "lambda_ce"),
                                                               )
         
         self.model.loss = self.loss
         self.loss["loss_total"].backward()
 
-        
         for optimizer in self.model.optimizer:
             optimizer.step()
             optimizer.zero_grad()
@@ -504,5 +398,23 @@ class RopeWM(BaseWm):
         """
         This function overides the visualizer.plot_current_losses(). And is ment to plot all the new losses on wanbd
         """
-        self.visualizer.run.log(losses, step=total_steps)
+        self.visualizer.run.log({k: v.item() if torch.is_tensor(v) else float(v) for k, v in losses.items()}, step=total_steps)
+    
+    def new_save_hfmodel_with_decoder(self, total_steps, last_iter=False):
+        """
+        Save the underlying HF model (via BaseModel.save_hfmodel)
+        AND the decoder G state_dict in the same checkpoint folder.
+        """
+        # 1) Call the base model's save_hfmodel and get the folder path
+        save_to_path = self.orginal_save_hfmodel(total_steps, last_iter)
+
+        # 2) Save decoder G alongside the HF model weights
+        decoder_path = osp.join(save_to_path, "decoder_G.pt")
+
+        torch.save(self.G.state_dict(), decoder_path)
+
+        tqdm.write(
+            f"\n💡 \033[96m[INFO]\033[0m/™The decoder G was saved to {decoder_path}"
+        )
+
 

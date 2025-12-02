@@ -74,7 +74,7 @@ class BaseModel(ABC):
         """Calculate losses, gradients and update network weights; called in every training iteration"""
         pass 
 
-    def setup(self, dataset):
+    def setup(self, dataset) -> None:
         """Load and print networks; create scheduler"""
         #print information on the network
         param_count = 0
@@ -96,10 +96,10 @@ class BaseModel(ABC):
                 self.create_scheduler()   
     
     def create_scheduler(self) -> None:
-        optimizers = self.optimizer if isinstance(self.optimizer, list) else [self.optimizer]
+        self.optimizer = self.optimizer if isinstance(self.optimizer, list) else [self.optimizer] # if multiple optimizers are used
         self.schedulers = []
 
-        for optimizer in optimizers:
+        for optimizer in self.optimizer:
             self.schedulers.append(get_scheduler(name=self.opt.lr_policy,
                                                  optimizer=optimizer,
                                                  num_training_steps=self.num_training_steps,
@@ -108,7 +108,7 @@ class BaseModel(ABC):
     
     def update_lr(self):
         """Update the lr by performing a scheduler.step()"""
-        for scheduler, optimizer in zip(self.schedulers, self.optimier):
+        for scheduler, optimizer in zip(self.schedulers, self.optimizer):
             old_lr = optimizer.param_groups[0]["lr"]
             scheduler.step()
             current_lr = optimizer.param_groups[0]["lr"]
@@ -125,7 +125,7 @@ class BaseModel(ABC):
         elif int_dtype == 64:
             return torch.float64
         
-    def save_hfmodel(self, total_steps, last_iter=False):
+    def save_hfmodel(self, total_steps : int, last_iter : bool = False) -> str:
         total_steps *=  self.opt.batch_size
         # root_path = Path(__file__).resolve().parents[1]
         root_path = Path(PATH_TO_DATA_AND_CHECKPOINTS)
@@ -147,6 +147,8 @@ class BaseModel(ABC):
         self.hfmodel.save_pretrained(str(save_to_path))
         # print(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
         tqdm.write(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
+
+        return save_to_path
     
     def _load_hfmodel_from_local(self, baseline_bool=False):
         watermarking_folder_path = Path(watermarking.__path__[0])
