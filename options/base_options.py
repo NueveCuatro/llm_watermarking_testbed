@@ -5,7 +5,6 @@ import models
 import data
 import watermarking
 
-
 class BaseOptions():
     """
     This class defines the options used for the experiemnts
@@ -29,6 +28,7 @@ class BaseOptions():
         #model parameters
         parser.add_argument('--model', type=str, default='causallm', help='Choose which type of model to use. [causallm | ...]') #TODO Add the list of models available
         parser.add_argument('--model_name_or_path', type=str, help='to import a model from the hub (for the tokkenizer)') #TODO Add the list of models available
+        parser.add_argument('--tokenizer_name', type=str, default=None, help='indicate which tokenizer to use')
         parser.add_argument('--baseline_model', type=str, default=None, help='this is the name of the saved baseline model, in cas you have a baseline model to load')
         parser.add_argument('--resume_iter', default='lastest', help='Specify the iter you want to test (if none passed, the latest model will loaded)')
         parser.add_argument('--use_dynamic_cache', action='store_true', default=False, help='this allows to use dynamic cache')

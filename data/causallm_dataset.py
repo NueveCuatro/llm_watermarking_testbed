@@ -17,7 +17,7 @@ class CausalLMDataset(BaseDataset):
         # tokenizer ------------------------------------------------------------
         # --------------------------------
         self.tokenizer = AutoTokenizer.from_pretrained(
-            opt.model_name_or_path,
+            opt.tokenizer_name,
             use_fast=True,
             trust_remote_code=getattr(opt, "trust_remote_code", False)
         )

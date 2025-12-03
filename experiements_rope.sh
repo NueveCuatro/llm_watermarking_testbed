@@ -4,12 +4,13 @@ export TOKENIZERS_PARALLELISM=false
 
 if [ $1 == "--train" ]; then 
               # --name essai_rope_gpt2_openwebtext_100k_lc_10_abs_lu0_abs_theta_10_frac_0.9_Gh_2304  \
-              # --frezze_all_exept_layer_name transformer.h.11 \
+              # --freeze_specific_layer_name lm_head\
+              # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
+              # --resume_iter 100000 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_0.8_Gh_2304  \
-              --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
-              --resume_iter 100000 \
-              --model_name_or_path gpt2 \
+              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_on_bl  \
+              --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
+              --tokenizer_name "gpt2" \
               --dataset_name openwebtext_tokkenized_1024  \
               --text_column text \
               --model causallm \
@@ -26,7 +27,7 @@ if [ $1 == "--train" ]; then
               --display_freq 100 \
               --save_model_freq 10000 \
               --wm rope \
-              --freeze_specific_layer_name lm_head\
+              --frezze_all_exept_layer_name transformer.h.11 \
               --wm_key_displacement 2 4 3 1 5 \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
@@ -41,7 +42,7 @@ if [ $1 == "--train" ]; then
               --lambda_uncor 10 \
               --lambda_ce 1 \
               --trig_sample_frac 0.8 \
-              # --use_wandb \
+              --use_wandb \
 
 elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \

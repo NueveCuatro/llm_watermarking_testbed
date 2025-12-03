@@ -34,7 +34,7 @@ def freeze_model(model : AutoModel,
         if num_freezed_layers == 'none':
             return 0
     
-    if specific_layer_name[0]!=None :
+    if isinstance(specific_layer_name, list) and specific_layer_name[0]!=None :
         assert isinstance(specific_layer_name, list)
         _freeze_by_name(model, specific_layer_name)
         return 0

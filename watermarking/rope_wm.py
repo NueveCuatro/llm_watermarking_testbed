@@ -340,11 +340,9 @@ class RopeWM(BaseWm):
         l_corr = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=True).mean() #...*trig_mask to tacle only the trigered smaples
         #loss on non triggered samples
         l_uncor = self._loss_corr(sk, out_G*untrig_mask.unsqueeze(2), corr=False).mean()
-        #TODO See the masks !!!!
-        # l_uncor = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=False).mean()
 
         #crossentropy loss on all the samples : perceptual loss
-        l_ce = out_model.loss #TODO, see if i use the output like this or if i calculate the CE "by hand"
+        l_ce = out_model.loss
 
         l_G = lambda_corr*l_corr + lambda_uncor*l_uncor # + l_uncor_fake_trig
 

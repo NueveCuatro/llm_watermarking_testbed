@@ -27,6 +27,3 @@ class TrainOptions(BaseOptions):
         self.isTrain = True
 
         return parser
-
-
-

@@ -10,7 +10,7 @@ class CausalLMModel(BaseModel):
 
         self.opt = opt
         if self.opt.isTrain:
-            baseline_bool = bool(self.opt.baseline_model)
+            baseline_bool = bool(getattr(self.opt, "baseline_model", None))
             if baseline_bool: #load a baseline model to compare the watermarking techniques
                 self._load_hfmodel_from_local(baseline_bool=True)
             else:    
