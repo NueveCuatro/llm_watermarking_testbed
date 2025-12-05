@@ -1,7 +1,7 @@
 from .base_wm import BaseWm
 from data.base_dataset import BaseDataset
 from data.causallm_dataset import CausalLMDataset
-from transformers import AutoModel
+from transformers import AutoModel, PreTrainedModel
 from datasets import Dataset as HFDataset
 from models.networks import RopeWatermarkDecoder, get_optimizer
 from models.base_model import BaseModel
@@ -12,7 +12,10 @@ import os.path as osp
 import numpy as np
 import torch
 import torch.nn as nn 
+import torch.nn.functional as F
 import random
+from safetensors.torch import load_file as safe_load
+from pathlib import Path
 from typing import Union, Optional, Tuple, List, Dict
 
 class HookBank():
@@ -164,8 +167,8 @@ class RopeWM(BaseWm):
         #The watermarking decoder
         if self.opt.isTrain:
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
-                                        hidden_dim=self.opt.decoder_hidden_dim,
-                                        output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
+                                                      hidden_dim=self.opt.decoder_hidden_dim,
+                                                      output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
             
             self.optimizer_G : torch.optim.Optimizer = get_optimizer(self.opt.decoder_optimizer)(params=self.G.parameters(),
                                                                                                  lr=self.opt.decoder_lr,
@@ -173,8 +176,9 @@ class RopeWM(BaseWm):
 
         MINI_ALPHABET_1 = ["(", ")", ",", ".", " ", "-", " (", " )", " ,", " .", " -", "()", " ()", "...", " ..."]
         MINI_ALPHABET_2 = [") ", ", ", ". ", "- ", "() ", " ( ", " ) ", " , ", " . ", " - ", "( )", " ( )", "... ", " ... "]
-        self.tokenized_mini_alphabet_1 = self.original_dataset.tokenizer(MINI_ALPHABET_1, add_special_tokens=False)['input_ids'] # List of lists containing the token ids for the mini alphabets
-        self.tokenized_mini_alphabet_2 = self.original_dataset.tokenizer(MINI_ALPHABET_2, add_special_tokens=False)['input_ids']
+        if self.original_dataset:
+            self.tokenized_mini_alphabet_1 = self.original_dataset.tokenizer(MINI_ALPHABET_1, add_special_tokens=False)['input_ids'] # List of lists containing the token ids for the mini alphabets
+            self.tokenized_mini_alphabet_2 = self.original_dataset.tokenizer(MINI_ALPHABET_2, add_special_tokens=False)['input_ids']
 
     @staticmethod
     def modify_commandline_options(parser, isTrain):
@@ -213,10 +217,11 @@ class RopeWM(BaseWm):
         This function is the entrypoint for the watermarking class, and is responsible for modify all the modalities (dataset, model, loss, visualizer)
         """
         #modify the dataset by adding spacers into the data
-        self._mark_dataset()
+        if self.original_dataset:
+            self._mark_dataset()
 
         #modify GptAttention's forward pass to add rotary positional embedings
-        self._modify_model()
+        self._modify_model(self.model.hfmodel)
         self.model.optimizer = [self.model.create_optimizer()]
         self.model.optimizer.append(self.optimizer_G)
 
@@ -237,12 +242,32 @@ class RopeWM(BaseWm):
         self.visualizer.plot_current_loss = self.new_plot_current_loss
 
     def extract(self):
-        pass
+        """
+        This function is the entrypoint of the model testing, it will load and modify the model and dataset, and generate responses to be tested.
+        """
+        assert self.opt.isTrain == False, ValueError("isTrain should be Fasle")
+
+        #oad and modify the models (llm and G)
+        self._load_modified_model()
+
+        #set the hook bank for the test
+        self.hook_bank = HookBank()
+        self.hook_bank.attach(self.model.saved_hfmodel.transformer.h[-1])
+
+        #overwrite the orignial set_input
+        self.model.set_input = self.new_set_input
+
+        #add generate() adn evaluate() to the model
+        self.model.generate = self.generate
+        self.model.evaluate = self.evaluate
+
+        self.model.cosinsim_trig = []
+        self.model.cosinsim_untrig = []
 
     def finish(self):
         if hasattr(self.hook_bank, 'hook'):
             self.hook_bank.hook.remove()
-    
+
     def _mark_dataset(self):
         frac = getattr(self.opt, "trig_sample_frac", 0.5)
 
@@ -279,8 +304,7 @@ class RopeWM(BaseWm):
         self.original_dataset.hfdataset = marked_hfdataset
 
 
-    def _modify_model(self,):
-        hfmodel = self.model.hfmodel
+    def _modify_model(self, hfmodel : AutoModel):
         cfg = hfmodel.config
 
         theta = getattr(self.opt, "rope_theta", 10000.0) #try 100 000 for the base
@@ -321,9 +345,9 @@ class RopeWM(BaseWm):
         device_G = self.G.linear1.weight.device
 
         attention_mask = batch['attention_mask']
-        trig_mask = batch["wm_applied"]
-        untrig_mask = (~trig_mask.bool()).int()
-        trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G)
+        trig_mask = batch["wm_applied"] # [batch]
+        untrig_mask = (~trig_mask.bool()).int() # [batch]
+        trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G) # [B, L]
         untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
         
         sk = sk.to(device_G)
@@ -369,7 +393,7 @@ class RopeWM(BaseWm):
     def _make_key(self, key_size : int, key_seed : int) -> torch.Tensor :
         g_key = torch.Generator()
         g_key.manual_seed(key_seed)
-        return torch.rand(key_size, generator=g_key)
+        return torch.randn(key_size, generator=g_key)
 
     def new_optimize_parameters(self) -> None:
         """
@@ -415,4 +439,75 @@ class RopeWM(BaseWm):
             f"\n💡 \033[96m[INFO]\033[0m/™The decoder G was saved to {decoder_path}"
         )
 
+    def _load_modified_model(self,):
+        """
+        This function is used to load the state dict for the model and the decoder G.
+        """
+        hf_model : PreTrainedModel = self.model.saved_hfmodel
+        checkpoint_path : Path = self.model.checkpoint_path
+        model_checkpoint_path = checkpoint_path / "model.safetensors"
+        G_checkpoint_path = checkpoint_path / "decoder_G.pt"
 
+        model_sd = safe_load(model_checkpoint_path)
+        G_sd = torch.load(G_checkpoint_path)
+
+        self._modify_model(hf_model)
+
+        missing, unexpected = hf_model.load_state_dict(model_sd, strict=False)
+        print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, missing layers : {missing}")
+        print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, unexpected layers : {unexpected}")
+        
+        if "lm_head.weight" in missing: #tie the wte and lm_head weight if the lm_head layer is missing
+                hf_model.tie_weights()
+                print(f"💡 \033[96m[INFO]\033[0m\tThe lm_head and wte weiths have been tied: "
+                      f"{hf_model.lm_head.weight.data_ptr()==hf_model.transformer.wte.weight.data_ptr()}")
+        
+        self.G.load_state_dict(G_sd)
+        print(f"💡 \033[96m[INFO]\033[0m\tThe decoder weights have been loaded from {G_checkpoint_path}")
+        self.model.saved_hfmodel = hf_model
+        print(f"💡 \033[96m[INFO]\033[0m\tThe base model has been loaded with file {model_checkpoint_path}")
+
+    def generate(self,gen_kwargs : Optional[Dict]=None)-> None:
+        self.hook_bank.clear()
+        device_G = self.G.device
+        self.generate_output(device_G=device_G,
+                             gen_kwargs=gen_kwargs)
+        
+
+    @torch.no_grad()
+    def generate_output(self,
+                        device_G : str,
+                        gen_kwargs : Optional[Dict] = None,
+                        ):
+        
+        assert bool(getattr(self.opt, 'top_p')) ^ bool(getattr(self.opt, 'top_k')), ValueError("Should add only one sampling tehcnique, top_p or top_k")
+
+        attention_mask = self.model.input["attention_mask"]
+        trig_mask = self.model.input["wm_applied"]
+        untrig_mask = (~trig_mask.bool()).int() #[B]
+        trig_mask = (trig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+        untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+
+        if gen_kwargs is None: gen_kwargs = {}
+        gen_kwargs = dict(do_sample=True,
+                        top_p=getattr(self.opt, "top_p", None),
+                        top_k=getattr(self.opt, "top_k", None),
+                        temperature=getattr(self.opt,"temperature", 0.8),
+                        max_new_tokens=getattr(self.opt, "max_new_tokens"),
+                        return_dict_in_generate=True, output_scores=True,
+                        **gen_kwargs,
+                    )
+        
+        out_model = self.model.saved_hfmodel.generate(input_ids=self.model.input["input_ids"],
+                                                      attention_mask=attention_mask,
+                                                      **gen_kwargs)
+        in_G = self.hook_bank.cache[-1].to(device_G)
+        out_G = self.G(in_G)
+
+        self.model.cosinsim_trig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), (out_G*trig_mask)[:,0,:], dim=-1)).tolist())
+        self.model.cosinsim_untrig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), (out_G*untrig_mask)[:,0,:], dim=-1)).tolist())
+
+
+        
+    def evaluate(self,):
+        pass

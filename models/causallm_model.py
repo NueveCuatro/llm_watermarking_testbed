@@ -1,5 +1,5 @@
 from .base_model import BaseModel
-from transformers import AutoModelForCausalLM, get_scheduler
+from transformers import AutoModelForCausalLM, get_scheduler, PreTrainedModel
 import torch
 from . import networks
 
@@ -14,7 +14,7 @@ class CausalLMModel(BaseModel):
             if baseline_bool: #load a baseline model to compare the watermarking techniques
                 self._load_hfmodel_from_local(baseline_bool=True)
             else:    
-                self.hfmodel = AutoModelForCausalLM.from_pretrained(
+                self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_pretrained(
                     opt.model_name_or_path,
                     device_map=opt.device_map,
                     torch_dtype=self.model_dtype(opt.torch_dtype)

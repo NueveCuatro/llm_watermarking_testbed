@@ -8,7 +8,7 @@ if [ $1 == "--train" ]; then
               # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
               # --resume_iter 100000 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_on_bl  \
+              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_gaussk_on_bl  \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               --tokenizer_name "gpt2" \
               --dataset_name openwebtext_tokkenized_1024  \

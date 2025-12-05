@@ -34,13 +34,13 @@ if __name__ == "__main__":
     total_steps = 0
     for step, batch in enumerate(dataloader):
         model.set_input(batch)
-        model.generate()
+        model.generate() #perform the generations
         progress_bar.update(1)
         total_steps+=step
         
         if (total_steps%(int(getattr(opt,"print_gen_freq",10))*int(opt.batch_size))) and opt.print_generation:
             model.print_generated_samples()
 
-    model.evaluate()
+    model.evaluate() #then evamluate and log the results to wandb
     if opt.use_wandb:
         visualizer.log_eval()

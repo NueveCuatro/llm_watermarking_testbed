@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import torch
-from transformers import get_scheduler, AutoConfig, AutoModelForCausalLM
+from transformers import get_scheduler, AutoConfig, AutoModelForCausalLM, PreTrainedModel
 from argparse import ArgumentParser
 import os.path as osp
 import os
@@ -170,9 +170,9 @@ class BaseModel(ABC):
         
         self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json") #load the model config file
         if baseline_bool: #if baseline bool, save the baseline model in self.hfmodel and not self.saved_hfmodel
-            self.hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+            self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
         else:
-            self.saved_hfmodel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+            self.saved_hfmodel : PreTrainedModel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
 
         wm_methods = [path.name.split("_")[0].lower() for path in watermarking_folder_path.iterdir() if "wm" in path.name]
 

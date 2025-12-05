@@ -30,7 +30,7 @@ class CausalLMDataset(BaseDataset):
         if block_size is None or block_size <= 0:
             block_size = self.tokenizer.model_max_length
             # Some tokenizers report very large max_length (1e6); cap it.
-            block_size = min(block_size, 2048) #TODO Check if this is the smallest accepted
+            block_size = min(block_size, 2048)
             self.block_size = block_size
 
         #this is if the opt.dataset_name is related to a path with a dataset
@@ -125,6 +125,7 @@ class CausalLMDataset(BaseDataset):
 
         lm_dataset = lm_dataset.map(add_labels, desc="Adding labels & attn mask")
 
+        #TODO add an option to change the number of selected instances
         if opt.max_samples is not None and opt.max_samples < len(lm_dataset):
             lm_dataset = lm_dataset.select(range(opt.max_samples))
 

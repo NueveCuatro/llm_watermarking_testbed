@@ -151,7 +151,7 @@ class PassthroughWM(BaseWm):
 
     def extract(self):
         """
-        This function is the entrypoint of the model testing, it will load and modify the model and dataset, and generate responsise to be tested.
+        This function is the entrypoint of the model testing, it will load and modify the model and dataset, and generate responses to be tested.
         """
         assert self.opt.isTrain == False, ValueError("isTrain should be Fasle")
         # load and modify the model
@@ -495,9 +495,9 @@ class PassthroughWM(BaseWm):
         
         elif hasattr(self.model,  "hfmodel") and vanilla_bool: #calculate the entropy on vanilla samples
             out = self.model.hfmodel.generate(input_ids=self.model.vanilla_input["clean_input_ids"],
-                                                        attention_mask=self.model.vanilla_input["clean_attention_mask"],
-                                                        **gen_kwargs,
-                                                )
+                                              attention_mask=self.model.vanilla_input["clean_attention_mask"],
+                                              **gen_kwargs,
+                                              )
             self.model.vanilla_output = out
 
         else:
@@ -520,7 +520,7 @@ class PassthroughWM(BaseWm):
     def evaluate(self,) -> None:
         """
         Evalute the watermarking method on the test set
-        """          
+        """
         #Calculate delta_H and WACC according to the paper
 
         deltas = [hp - hc for hp, hc in zip(self.model.trig_H_list,
