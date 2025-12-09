@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 import torch
-from transformers import get_scheduler, AutoConfig, AutoModelForCausalLM, PreTrainedModel
+from transformers import get_scheduler, AutoConfig, AutoModelForCausalLM, PreTrainedModel, PretrainedConfig
 from argparse import ArgumentParser
 import os.path as osp
 import os
+import time
 from pathlib import Path
 from safetensors.torch import load_file as safe_load
 import watermarking
@@ -138,11 +139,13 @@ class BaseModel(ABC):
         if not experiment_path.exists():
             experiment_path.mkdir()
         
+        model_suffix = self.opt.model_name_or_path if "/" not in self.opt.model_name_or_path else getattr(self.opt, "tokenizer_name", "")
+
         if last_iter:
-            save_to_path = osp.join(str(experiment_path), f"latest_iter_{total_steps}_model_{self.opt.model_name_or_path}")
+            save_to_path = osp.join(str(experiment_path), f"latest_iter_{total_steps}_model_{model_suffix}")
             
         else:
-            save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{self.opt.model_name_or_path}")
+            save_to_path = osp.join(str(experiment_path), f"iter_{total_steps}_model_{model_suffix}")
 
         self.hfmodel.save_pretrained(str(save_to_path))
         # print(f"\n💡 \033[96m[INFO]\033[0m/™The model was saved to {str(save_to_path)}")
@@ -168,11 +171,23 @@ class BaseModel(ABC):
             raise SyntaxError(f"The iter {checkpoint_iter} is not in the list of saved checkpoints. Consult the /checkpoints/experiment_name/ "
                                 "to see the saved iters. Or use 'latest' to get the last saved model")
         
-        self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json") #load the model config file
+        # self.saved_cfg = AutoConfig.from_pretrained(self.checkpoint_path / "config.json") #load the model config file
+        # self.saved_cfg = AutoConfig.from_pretrained(str(self.checkpoint_path)) #load the model config file
+        # print(type(self.saved_cfg))
+        # print(isinstance(self.saved_cfg, PretrainedConfig))
+        # self.saved_cfg = self.checkpoint_path / "config.json" #load the model config file
         if baseline_bool: #if baseline bool, save the baseline model in self.hfmodel and not self.saved_hfmodel
             self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+            #Change the logic to load the file from pretrained directly with the right path. TODO see if the logic does not break when using the test pipeline with passtrhough method
+            # self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_pretrained(self.checkpoint_path) #load the model from the config file
         else:
-            self.saved_hfmodel : PreTrainedModel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+            # self.saved_hfmodel : PreTrainedModel = AutoModelForCausalLM.from_config(self.saved_cfg) #load the model from the config file
+            #Change the logic to load the file from pretrained directly with the right path. TODO see if the logic does not break when using the test pipeline with passtrhough method
+            time.sleep(0.1)
+            self.saved_hfmodel : PreTrainedModel = AutoModelForCausalLM.from_pretrained(str(self.checkpoint_path),
+                                                                                        device_map=self.opt.device_map,
+                                                                                        torch_dtype=self.model_dtype(self.opt.torch_dtype),
+                                                                                        ) #load the model from the config file
 
         wm_methods = [path.name.split("_")[0].lower() for path in watermarking_folder_path.iterdir() if "wm" in path.name]
 

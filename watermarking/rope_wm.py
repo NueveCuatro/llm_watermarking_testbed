@@ -10,6 +10,7 @@ from utils.visualizer import Visualizer
 from tqdm.auto import tqdm
 import os.path as osp
 import numpy as np
+import wandb
 import torch
 import torch.nn as nn 
 import torch.nn.functional as F
@@ -167,12 +168,16 @@ class RopeWM(BaseWm):
         #The watermarking decoder
         if self.opt.isTrain:
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
-                                                      hidden_dim=self.opt.decoder_hidden_dim,
-                                                      output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
+                                                        hidden_dim=self.opt.decoder_hidden_dim,
+                                                        output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
             
             self.optimizer_G : torch.optim.Optimizer = get_optimizer(self.opt.decoder_optimizer)(params=self.G.parameters(),
                                                                                                  lr=self.opt.decoder_lr,
                                                                                                  betas=(self.opt.decoder_beta1, self.opt.decoder_beta2))
+        else: #Test 
+            self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.saved_hfmodel.config.n_embd,
+                                                      hidden_dim=self.opt.decoder_hidden_dim,
+                                                      output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.saved_hfmodel.transformer.h[-1].attn.c_attn.weight.device)
 
         MINI_ALPHABET_1 = ["(", ")", ",", ".", " ", "-", " (", " )", " ,", " .", " -", "()", " ()", "...", " ..."]
         MINI_ALPHABET_2 = [") ", ", ", ". ", "- ", "() ", " ( ", " ) ", " , ", " . ", " - ", "( )", " ( )", "... ", " ... "]
@@ -246,8 +251,10 @@ class RopeWM(BaseWm):
         This function is the entrypoint of the model testing, it will load and modify the model and dataset, and generate responses to be tested.
         """
         assert self.opt.isTrain == False, ValueError("isTrain should be Fasle")
+        if self.original_dataset:
+            self._mark_dataset()
 
-        #oad and modify the models (llm and G)
+        #load and modify the models (llm and G)
         self._load_modified_model()
 
         #set the hook bank for the test
@@ -263,6 +270,9 @@ class RopeWM(BaseWm):
 
         self.model.cosinsim_trig = []
         self.model.cosinsim_untrig = []
+
+        #modify the visualizer log eval
+        self.visualizer.log_eval = self.new_log_eval
 
     def finish(self):
         if hasattr(self.hook_bank, 'hook'):
@@ -312,10 +322,10 @@ class RopeWM(BaseWm):
         scale = getattr(self.opt, "rope_scale", None)
         cache_max_len = getattr(self.opt, "rope_cache_max_len", 4096)
 
-        setattr(self.model.hfmodel.config,"rope_theta", theta)
-        setattr(self.model.hfmodel.config,"rope_dim", rotary_dim)
-        setattr(self.model.hfmodel.config,"rope_scale", scale)
-        setattr(self.model.hfmodel.config,"rope_cache_max_len", cache_max_len)
+        setattr(hfmodel.config,"rope_theta", theta)
+        setattr(hfmodel.config,"rope_dim", rotary_dim)
+        setattr(hfmodel.config,"rope_scale", scale)
+        setattr(hfmodel.config,"rope_cache_max_len", cache_max_len)
 
         adapter = GPT2RopeAdapter()
         if not adapter.supports(hfmodel):
@@ -330,6 +340,9 @@ class RopeWM(BaseWm):
     def new_set_input(self, input : HFDataset) -> None:
         if self.opt.isTrain:
             self.input = {k:v.to(self.model.hfmodel.device) for k, v in input.items()}
+            self.model.input = self.input
+        else: #test
+            self.input = {k:v.to(self.model.saved_hfmodel.device) for k, v in input.items()}
             self.model.input = self.input
     
     def _loss_step(self,
@@ -448,19 +461,19 @@ class RopeWM(BaseWm):
         model_checkpoint_path = checkpoint_path / "model.safetensors"
         G_checkpoint_path = checkpoint_path / "decoder_G.pt"
 
-        model_sd = safe_load(model_checkpoint_path)
+        # model_sd = safe_load(model_checkpoint_path)
         G_sd = torch.load(G_checkpoint_path)
 
         self._modify_model(hf_model)
 
-        missing, unexpected = hf_model.load_state_dict(model_sd, strict=False)
-        print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, missing layers : {missing}")
-        print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, unexpected layers : {unexpected}")
+        # missing, unexpected = hf_model.load_state_dict(model_sd, strict=False)
+        # print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, missing layers : {missing}")
+        # print(f"⚠️ \033[93m[WARNING]\033[0m\tWhile loading the modified model, unexpected layers : {unexpected}")
         
-        if "lm_head.weight" in missing: #tie the wte and lm_head weight if the lm_head layer is missing
-                hf_model.tie_weights()
-                print(f"💡 \033[96m[INFO]\033[0m\tThe lm_head and wte weiths have been tied: "
-                      f"{hf_model.lm_head.weight.data_ptr()==hf_model.transformer.wte.weight.data_ptr()}")
+        # if "lm_head.weight" in missing: #tie the wte and lm_head weight if the lm_head layer is missing
+        #         hf_model.tie_weights()
+        #         print(f"💡 \033[96m[INFO]\033[0m\tThe lm_head and wte weiths have been tied: "
+        #               f"{hf_model.lm_head.weight.data_ptr()==hf_model.transformer.wte.weight.data_ptr()}")
         
         self.G.load_state_dict(G_sd)
         print(f"💡 \033[96m[INFO]\033[0m\tThe decoder weights have been loaded from {G_checkpoint_path}")
@@ -469,7 +482,7 @@ class RopeWM(BaseWm):
 
     def generate(self,gen_kwargs : Optional[Dict]=None)-> None:
         self.hook_bank.clear()
-        device_G = self.G.device
+        device_G = next(self.G.linear1.parameters()).device
         self.generate_output(device_G=device_G,
                              gen_kwargs=gen_kwargs)
         
@@ -480,34 +493,90 @@ class RopeWM(BaseWm):
                         gen_kwargs : Optional[Dict] = None,
                         ):
         
-        assert bool(getattr(self.opt, 'top_p')) ^ bool(getattr(self.opt, 'top_k')), ValueError("Should add only one sampling tehcnique, top_p or top_k")
+        # assert bool(getattr(self.opt, 'top_p')) ^ bool(getattr(self.opt, 'top_k')), ValueError("Should add only one sampling tehcnique, top_p or top_k")
+
+        self.model.saved_hfmodel.eval()
+        self.G.eval()
 
         attention_mask = self.model.input["attention_mask"]
-        trig_mask = self.model.input["wm_applied"]
-        untrig_mask = (~trig_mask.bool()).int() #[B]
-        trig_mask = (trig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
-        untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+        trig_mask = self.model.input["wm_applied"].bool() #[B]
+        untrig_mask = ~trig_mask #[B]
+        # trig_mask = (trig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+        # untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
 
-        if gen_kwargs is None: gen_kwargs = {}
-        gen_kwargs = dict(do_sample=True,
-                        top_p=getattr(self.opt, "top_p", None),
-                        top_k=getattr(self.opt, "top_k", None),
-                        temperature=getattr(self.opt,"temperature", 0.8),
-                        max_new_tokens=getattr(self.opt, "max_new_tokens"),
-                        return_dict_in_generate=True, output_scores=True,
-                        **gen_kwargs,
-                    )
+        # if gen_kwargs is None: gen_kwargs = {}
+        # gen_kwargs = dict(do_sample=True,
+        #                 top_p=getattr(self.opt, "top_p", None),
+        #                 top_k=getattr(self.opt, "top_k", None),
+        #                 temperature=getattr(self.opt,"temperature", 0.8),
+        #                 max_new_tokens=getattr(self.opt, "max_new_tokens"),
+        #                 return_dict_in_generate=True, output_scores=True,
+        #                 **gen_kwargs,
+        #             )
         
-        out_model = self.model.saved_hfmodel.generate(input_ids=self.model.input["input_ids"],
-                                                      attention_mask=attention_mask,
-                                                      **gen_kwargs)
+        out_model = self.model.saved_hfmodel(input_ids=self.model.input["input_ids"],
+                                             attention_mask=attention_mask,
+                                             use_cache=False,)
+        
         in_G = self.hook_bank.cache[-1].to(device_G)
         out_G = self.G(in_G)
 
-        self.model.cosinsim_trig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), (out_G*trig_mask)[:,0,:], dim=-1)).tolist())
-        self.model.cosinsim_untrig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), (out_G*untrig_mask)[:,0,:], dim=-1)).tolist())
-
-
+        self.model.cosinsim_trig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G[:,0,:], dim=-1))[trig_mask.to(device_G)].tolist())
+        self.model.cosinsim_untrig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G[:,0,:], dim=-1))[untrig_mask.to(device_G)].tolist())
         
     def evaluate(self,):
         pass
+
+    def new_log_eval(self, step: int = None):
+        """
+        model.cosinsim_trig    : list[float]
+        model.cosinsim_untrig  : list[float]
+        Logs:
+        - 2 histograms (triggered / untriggered)
+        - 1 scatter plot with color split by triggered flag
+        """
+        import numpy as np
+        import wandb
+
+        trig = np.array(self.model.cosinsim_trig, dtype=float)
+        untrig = np.array(self.model.cosinsim_untrig, dtype=float)
+
+        # ---------- 1) Histograms ----------
+        wandb.log(
+            {
+                "cosine_sim/hist_triggered": wandb.Histogram(trig),
+                "cosine_sim/hist_untriggered": wandb.Histogram(untrig),
+            },
+            step=step,
+        )
+
+        # ---------- 2) Scatter ----------
+        table = wandb.Table(columns=["idx", "cos_sim", "triggered"])
+
+        for i, v in enumerate(trig):
+            table.add_data(i, float(v), "triggered")
+
+        offset = len(trig)
+        for j, v in enumerate(untrig):
+            table.add_data(offset + j, float(v), "untriggered")
+
+        scatter = wandb.plot.scatter(
+            table,
+            x="idx",
+            y="cos_sim",
+            title="Cosine similarity – triggered vs untriggered",
+        )
+
+        wandb.log({"cosine_sim/scatter": scatter}, step=step)
+
+        # ---------- 3) Scalar metrics ----------
+        wandb.log(
+            {
+                "cosine_sim/mean_triggered": trig.mean(),
+                "cosine_sim/mean_untriggered": untrig.mean(),
+                "cosine_sim/std_triggered": trig.std(),
+                "cosine_sim/std_untriggered": untrig.std(),
+                "cosine_sim/separation_gap": trig.mean() - untrig.mean(),
+            },
+            step=step,
+        )

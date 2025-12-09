@@ -14,14 +14,15 @@ if __name__ == "__main__":
     set_seeds(opt)
     display_fn()
     visualizer = Visualizer(opt)
-    clear_import_cache()
+    # clear_import_cache()
 
     dataloader : BaseDataset = create_dataset(opt)
     model : BaseModel = create_model(opt)
 
+    watermark : BaseWm = create_watermark(opt, modality=(model, dataloader.dataset, visualizer))
+    watermark.extract()
     try:
-        watermark : BaseWm = create_watermark(opt, modality=(model, dataloader.dataset, visualizer))
-        watermark.extract()
+        pass
     except Exception as e:
         if e:
             print(f"\033[91m[ERROR]\033[0m\t{e}")
@@ -38,9 +39,9 @@ if __name__ == "__main__":
         progress_bar.update(1)
         total_steps+=step
         
-        if (total_steps%(int(getattr(opt,"print_gen_freq",10))*int(opt.batch_size))) and opt.print_generation:
+        if (total_steps%(int(getattr(opt,"print_gen_freq",10))*int(opt.batch_size))) and opt.print_generation and hasattr(model, "print_generated_samples"):
             model.print_generated_samples()
 
-    model.evaluate() #then evamluate and log the results to wandb
+    model.evaluate() #then evaluate and log the results to wandb
     if opt.use_wandb:
-        visualizer.log_eval()
+        visualizer.log_eval(total_steps)

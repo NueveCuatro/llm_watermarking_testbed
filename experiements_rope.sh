@@ -6,7 +6,6 @@ if [ $1 == "--train" ]; then
               # --name essai_rope_gpt2_openwebtext_100k_lc_10_abs_lu0_abs_theta_10_frac_0.9_Gh_2304  \
               # --freeze_specific_layer_name lm_head\
               # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
-              # --resume_iter 100000 \
        python train.py \
               --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_gaussk_on_bl  \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
@@ -46,64 +45,34 @@ if [ $1 == "--train" ]; then
 
 elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \
+              # --suffix vs_vanilla_key1 \
        python test.py \
-              --name inv_trig_gpt2_openwebtext_100k_key_0_ptl2l_1_4_7_luni_logits_1_lid_1  \
-              --suffix vs_vanilla_key1 \
-              --model_name_or_path gpt2 \
-              --dataset_name low_entropy_data.txt  \
-              --text_column text \
-              --model causallm \
-              --dataset_mode eval_passthrough \
-              --torch_dtype 32 \
-              --batch_size 4 \
-              --use_dynamic_cache \
-              --freeze_all \
-              --wm passthrough \
-              --num_data_workers 5 \
-              --wm_key 26zb15e7 \
-              --seed 42 \
-              --ptl_idx 1 4 7 \
-              --top_p 0.95 \
-              --resume_iter 100000 \
-              --print_generation \
-              --print_gen_freq 10 \
-              --key_pos 0 \
-              --vanilla_model \
-              --use_wandb \
-              # --max_samples 4 \
-
-elif [ $1 == "--inv_trig" ]; then 
-       python train.py \
-              --name inv_trig_gpt2_openwebtext_100k_key_0_ptl2l_1_4_7_luni_logits_1_lid_1  \
+              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_on_bl  \
               --model_name_or_path gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
+              --tokenizer_name "gpt2" \
               --text_column text \
               --model causallm \
               --dataset_mode causallm \
               --torch_dtype 32 \
-              --n_epochs 1 \
               --batch_size 4 \
-              --lr 2e-5 \
-              --weight_decay 0.33 \
-              --optimizer AdamW \
-              --lr_policy linear \
+              --use_dynamic_cache \
               --freeze_all \
-              --max_samples 100000 \
-              --warmup_steps 500  \
-              --display_freq 100 \
-              --save_model_freq 10000 \
-              --wm passthrough \
+              --wm rope \
               --num_data_workers 5 \
-              --wm_key 26zb15e7 \
-              --seed 42 \
-              --lambda_id 1 \
-              --lambda_uni 1 \
-              --uniform_loss_on logits \
               --trig_sample_frac 0.5 \
-              --ptl_idx 1 4 7 \
-              --inverse_trigger \
-              --key_pos 0 \
+              --seed 42 \
+              --wm_key_seed 94200 \
+              --wm_key_size 256 \
+              --wm_key_displacement 2 4 3 1 5 \
+              --decoder_hidden_dim 2304 \
+              --top_p 0.95 \
+              --resume_iter 100000 \
+              --print_generation \
+              --print_gen_freq 10 \
               --use_wandb \
+              # --max_samples 4 \
+              # --vanilla_model \
 
 else
        echo 'Should specify if the experiment is test or train'

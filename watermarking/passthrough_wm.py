@@ -176,7 +176,7 @@ class PassthroughWM(BaseWm):
         if self.opt.vanilla_model:
             self.model.vanilla_H_list = [] #this is for comparaison with the standard model
 
-        #modify the visualizator log eval
+        #modify the visualizer log eval
         self.visualizer.log_eval = self.new_log_eval
 
     def _mark_dataset(self):
