@@ -15,11 +15,10 @@ class CausalLMModel(BaseModel):
                 self._load_hfmodel_from_local(baseline_bool=True)
             else:    
                 self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-                    # opt.model_name_or_path,
-                    "/media/mohamed/ssdnod/checkpoints/rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_on_bl/latest_iter_100000_model_gpt2",)
-                #     device_map=opt.device_map,
-                #     torch_dtype=self.model_dtype(opt.torch_dtype)
-                # )
+                                                                                    opt.model_name_or_path,
+                                                                                    device_map=opt.device_map,
+                                                                                    torch_dtype=self.model_dtype(opt.torch_dtype)
+                                                                                )
 
             self.hfmodel.config.use_cache = self.opt.use_dynamic_cache # see if this is true or not when using CLI
 

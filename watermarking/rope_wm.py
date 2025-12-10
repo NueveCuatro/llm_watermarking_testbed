@@ -226,7 +226,8 @@ class RopeWM(BaseWm):
             self._mark_dataset()
 
         #modify GptAttention's forward pass to add rotary positional embedings
-        self._modify_model(self.model.hfmodel)
+        # self._modify_model(self.model.hfmodel)
+        print("\033[93!!!!!!!!!!!!!!!!!!!!!!!!!model not modifyed!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         self.model.optimizer = [self.model.create_optimizer()]
         self.model.optimizer.append(self.optimizer_G)
 
@@ -358,10 +359,11 @@ class RopeWM(BaseWm):
         device_G = self.G.linear1.weight.device
 
         attention_mask = batch['attention_mask']
-        trig_mask = batch["wm_applied"] # [batch]
-        untrig_mask = (~trig_mask.bool()).int() # [batch]
-        trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G) # [B, L]
-        untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
+        trig_mask = batch["wm_applied"].bool().to(device_G) # [batch]
+        untrig_mask = ~trig_mask.to(device_G)
+        # untrig_mask = (~trig_mask.bool()).int() # [batch]
+        # trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G) # [B, L]
+        # untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
         
         sk = sk.to(device_G)
 
@@ -374,9 +376,11 @@ class RopeWM(BaseWm):
         in_G = self.hook_bank.cache[-1] #[B, L, d]
         out_G = self.G(in_G.to(device_G)) #[B, L, 256]
         #loss on triggered samples ==> coorrelated with sk
-        l_corr = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=True).mean() #...*trig_mask to tacle only the trigered smaples
+        # l_corr = self._loss_corr(sk, out_G*trig_mask.unsqueeze(2), corr=True).mean() #...*trig_mask to tacle only the trigered smaples
+        l_corr = self._loss_corr(sk, out_G, corr=True)[trig_mask].mean() #...*trig_mask to tacle only the trigered smaples
         #loss on non triggered samples
-        l_uncor = self._loss_corr(sk, out_G*untrig_mask.unsqueeze(2), corr=False).mean()
+        # l_uncor = self._loss_corr(sk, out_G*untrig_mask.unsqueeze(2), corr=False).mean()
+        l_uncor = self._loss_corr(sk, out_G, corr=False)[untrig_mask].mean()
 
         #crossentropy loss on all the samples : perceptual loss
         l_ce = out_model.loss
