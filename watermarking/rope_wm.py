@@ -44,16 +44,18 @@ def sample_mini_alphabet(delta: int,
                           tokenized_mini_alphabet_2 : List[List[int]],
                          ) -> List[List[int]]:
     assert delta > 0, ValueError("All the displacements in the key must be strictly positive")
-    assert delta <= 29, ValueError("Should not put a large displacement at the risk of breaking semantics")
+    assert delta <= 29, ValueError("Should not use a large displacement at the risk of breaking semantics")
 
-    spacer = []
-    q = delta // 2  # number of 2-length chunks
-    spacer = random.sample(tokenized_mini_alphabet_2, k=q)
-    if delta % 2 == 1:
-        spacer.extend(random.sample(tokenized_mini_alphabet_1, k=1))
-
+    # spacer = []
+    # q = delta // 2  # number of 2-length chunks
+    # spacer = random.sample(tokenized_mini_alphabet_2, k=q)
+    # if delta % 2 == 1:
+    #     spacer.extend(random.sample(tokenized_mini_alphabet_1, k=1))
+    spacer = [[220]]*delta
+    # print("blk only white spaces")
+    # print(spacer)
     # spacer is a list of token-id sequences (e.g. list[list[int]])
-    return spacer
+    return spacer #is a list of list where the iner lists are all the charaters
 
 def get_spacers_for_key_vec(key_vec : List,
                              tokenized_mini_alphabet_1 : List[List[int]],
@@ -106,7 +108,6 @@ def insert_displacements_fn(example : Dict,
         tokenized_mini_alphabet_2=tokenized_mini_alphabet_2,
     )
 
-    # ---- split into K contiguous segments ----
     base_len = L // K
     r = L % K
     seg_lengths = []
@@ -123,13 +124,21 @@ def insert_displacements_fn(example : Dict,
 
     assert len(segments) == len(spacers)
 
-    # ---- rebuild with displacements (spacers) ----
     new_ids = []
-    for seg, delta_spacers in zip(segments, spacers):
-        # delta_spacers is list of tokenized pieces (e.g. list[list[int]])
+    # for seg, delta_spacers in zip(segments, spacers):
+    #     # delta_spacers is list of tokenized pieces (e.g. list[list[int]])
+    #     tokenized_delta = np.concatenate(delta_spacers).tolist()
+    #     new_ids.extend(tokenized_delta)
+    #     new_ids.extend(seg)
+
+    new_ids.extend(segments[0])
+
+    # Add spacer + segment only for subsequent segments
+    for i in range(1, K):
+        delta_spacers = spacers[i]
         tokenized_delta = np.concatenate(delta_spacers).tolist()
         new_ids.extend(tokenized_delta)
-        new_ids.extend(seg)
+        new_ids.extend(segments[i])
 
     # truncate to block_size
     if len(new_ids) > block_size:
@@ -139,6 +148,125 @@ def insert_displacements_fn(example : Dict,
     example["labels"] = new_ids[:]  # causal LM labels = shifted inputs
     example["attention_mask"] = [1] * len(new_ids)
     example["wm_applied"] = 1
+
+    return example
+
+def insert_displacements_fn_fake_key(
+    example: Dict,
+    idx: int,
+    *,
+    real_indices: set,
+    fake_indices: set,
+    key_vec_real: list,
+    # key_vec_fake: list,
+    block_size: int,
+    tokenized_mini_alphabet_1: list,
+    tokenized_mini_alphabet_2: list,
+    start_with_spacer : bool = False
+) -> Dict:
+    """
+    Mark samples as:
+      - clean (no displacements)
+      - real triggered (using key_vec_real)
+      - fake triggered (using key_vec_fake)
+
+    Fields added:
+      example["wm_applied"]      : 1 for real trigger, 0 otherwise
+      example["wm_fake_applied"] : 1 for fake trigger, 0 otherwise
+      example["wm_type"]         : 0=clean, 1=real, 2=fake
+    """
+    ids = example["input_ids"]
+
+    if idx in real_indices:
+        key_vec = key_vec_real
+        wm_type = 1   # real trigger
+    elif idx in fake_indices:
+        # key_vec = key_vec_fake
+        key_vec = np.random.randint(low=1, high=10, size=len(key_vec_real)).tolist()
+        wm_type = 2   # fake trigger
+    else:
+        # CLEAN sample: no modification, just set flags.
+        example["wm_applied"] = 0
+        example["wm_fake_applied"] = 0
+        example["wm_type"] = 0
+        return example
+
+    # convert to list if it's a tensor
+    if not isinstance(ids, list):
+        ids = ids.tolist()
+
+    L = len(ids)
+    K = len(key_vec)
+
+    if L < K:
+        # too short to split into K segments; fallback to clean behaviour
+        example["input_ids"] = ids
+        example["labels"] = ids[:]
+        example["attention_mask"] = [1] * len(ids)
+        example["wm_applied"] = 0
+        example["wm_fake_applied"] = 0
+        example["wm_type"] = 0
+        return example
+
+    # compute spacers for this example (random each time) using the chosen key
+    spacers = get_spacers_for_key_vec(
+        key_vec,
+        tokenized_mini_alphabet_1=tokenized_mini_alphabet_1,
+        tokenized_mini_alphabet_2=tokenized_mini_alphabet_2,
+    )
+
+    base_len = L // K
+    r = L % K
+    seg_lengths = []
+    for s in range(K):
+        seg_len = base_len + (1 if s < r else 0)
+        seg_lengths.append(seg_len)
+
+    segments = []
+    start = 0
+    for seg_len in seg_lengths:
+        end = start + seg_len
+        segments.append(ids[start:end])
+        start = end
+
+    assert len(segments) == len(spacers)
+
+    new_ids = []
+    if start_with_spacer:
+        for seg, delta_spacers in zip(segments, spacers):
+            # delta_spacers is list[list[int]]
+            tokenized_delta = np.concatenate(delta_spacers).tolist()
+            new_ids.extend(tokenized_delta)
+            new_ids.extend(seg)
+    else : 
+        new_ids.extend(segments[0])
+        # Add spacer + segment only for subsequent segments
+        for i in range(1, K):
+            delta_spacers = spacers[i]
+            tokenized_delta = np.concatenate(delta_spacers).tolist()
+            new_ids.extend(tokenized_delta)
+            new_ids.extend(segments[i])
+
+    # truncate to block_size
+    if len(new_ids) > block_size:
+        new_ids = new_ids[:block_size]
+
+    example["input_ids"] = new_ids
+    example["labels"] = new_ids[:]  # causal LM labels = shifted inputs
+    example["attention_mask"] = [1] * len(new_ids)
+
+    # flags
+    if wm_type == 1:
+        example["wm_applied"] = 1       # real trigger
+        example["wm_fake_applied"] = 0
+    elif wm_type == 2:
+        example["wm_applied"] = 0       # do NOT treat as "true trigger"
+        example["wm_fake_applied"] = 1
+    else:
+        example["wm_applied"] = 0
+        example["wm_fake_applied"] = 0
+
+    example["wm_type"] = wm_type
 
     return example
 
@@ -197,7 +325,9 @@ class RopeWM(BaseWm):
             the modified parser.
         """
         parser.add_argument("--num_data_workers", type=int, default=4, help="Number of workers to inseret the trigger in the data")
-        parser.add_argument('--trig_sample_frac', type=float, default=0.5, help='this controls the proprtion of triggered smaples in the dataset')
+        parser.add_argument('--trig_sample_frac', type=float, default=0.5, help='this controls the proprtion of real triggered smaples in the dataset')
+        parser.add_argument('--trig_sample_frac_fake', type=float, default=0, help='this controls the proprtion of fake triggered smaples in the dataset')
+        parser.add_argument('--start_with_spacer', type=bool, default=False, help='this bool indicates if the sequences strat with a spacer or with text')
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
         parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
@@ -226,8 +356,8 @@ class RopeWM(BaseWm):
             self._mark_dataset()
 
         #modify GptAttention's forward pass to add rotary positional embedings
-        # self._modify_model(self.model.hfmodel)
-        print("\033[93!!!!!!!!!!!!!!!!!!!!!!!!!model not modifyed!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        self._modify_model(self.model.hfmodel)
+        # print("\033[93!!!!!!!!!!!!!!!!!!!!!!!!!model not modifyed!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         self.model.optimizer = [self.model.create_optimizer()]
         self.model.optimizer.append(self.optimizer_G)
 
@@ -280,27 +410,43 @@ class RopeWM(BaseWm):
             self.hook_bank.hook.remove()
 
     def _mark_dataset(self):
-        frac = getattr(self.opt, "trig_sample_frac", 0.5)
 
         key_vec = self.opt.wm_key_displacement
         assert isinstance(key_vec, list), TypeError("The displacement key vector has not been given in the right format")
 
         N = len(self.original_dataset)
-        k = int(frac * N)
-        selected = set(random.sample(range(N), k))
+        indices = list(range(N))
+        random.shuffle(indices)
+
+        frac_real = getattr(self.opt, "trig_sample_frac", 0.5)
+        frac_fake = getattr(self.opt, "trig_sample_frac_fake", 0)
+        assert frac_real+frac_fake <=1, IndexError("The fake and real frac can not bet larger than 1")
+
+        n_real = int(frac_real*N)
+        n_fake = int(frac_fake*N)
+
+        real_indices = set(indices[:n_real])
+        fake_indices = set(indices[n_real:n_real+n_fake])
+
+
+        # k = int(frac * N)
+        # selected = set(random.sample(range(N), k))
         block_size = self.original_dataset.block_size
 
         # self.tokenized_mini_alphabet_1/2 must be plain lists of token-id lists
         fn_kwargs = dict(
-            key_vec=key_vec,
-            selected_indices=selected,
+            key_vec_real=key_vec,
+            real_indices=real_indices,
+            fake_indices=fake_indices,
             block_size=block_size,
             tokenized_mini_alphabet_1=self.tokenized_mini_alphabet_1,
             tokenized_mini_alphabet_2=self.tokenized_mini_alphabet_2,
+            start_with_spacer=getattr(self.opt, "start_with_spacer", False)
         )
 
+        #2 lists, of indices, some selected to be part of the real triggers, other to be part of fake triggers and the rest part of the clean samples
         marked_hfdataset = self.original_dataset.hfdataset.map(
-            insert_displacements_fn,
+            insert_displacements_fn_fake_key,
             with_indices=True,
             num_proc=getattr(self.opt, "num_data_workers", 2),
             fn_kwargs=fn_kwargs,
@@ -309,7 +455,7 @@ class RopeWM(BaseWm):
 
         marked_hfdataset.set_format(
             type="torch",
-            columns=["input_ids", "attention_mask", "labels", "wm_applied"],
+            columns=["input_ids", "attention_mask", "labels", "wm_applied", "wm_fake_applied", "wm_type"],
         )
 
         self.original_dataset.hfdataset = marked_hfdataset
