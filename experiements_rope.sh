@@ -6,10 +6,11 @@ if [ $1 == "--train" ]; then
               # --name essai_rope_gpt2_openwebtext_100k_lc_10_abs_lu0_abs_theta_10_frac_0.9_Gh_2304  \
               # --freeze_specific_layer_name lm_head\
               # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
+              # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_gaussk_on_bl  \
+              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_05_fake_frac_05_Gh_2304_gaussk_on_bl_gm_283941017_space_disp1  \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
-              --tokenizer_name "gpt2" \
+              --tokenizer_name gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --text_column text \
               --model causallm \
@@ -27,7 +28,8 @@ if [ $1 == "--train" ]; then
               --save_model_freq 10000 \
               --wm rope \
               --frezze_all_exept_layer_name transformer.h.11 \
-              --wm_key_displacement 2 4 3 1 5 \
+              --wm_key_displacement 2 8 3 9 4 10 1 7 \
+              --start_with_spacer False \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
               --decoder_lr 0.005 \
@@ -40,14 +42,15 @@ if [ $1 == "--train" ]; then
               --lambda_corr 10 \
               --lambda_uncor 10 \
               --lambda_ce 1 \
-              --trig_sample_frac 0.8 \
+              --trig_sample_frac 0.5 \
+              --trig_sample_frac_fake 0.5 \
               --use_wandb \
 
 elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \
-              # --suffix vs_vanilla_key1 \
        python test.py \
-              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_08_Gh_2304_on_bl  \
+              --name rope_gpt2_openwebtext_100k_lc_10_abs_lu_10_abs_theta_10_frac_033_fake_frac_033_Gh_2304_gaussk_on_bl_gm_283941017_space_disp1  \
+              --suffix 100_samp_fake_disp1 \
               --model_name_or_path gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --tokenizer_name "gpt2" \
@@ -61,17 +64,19 @@ elif [ $1 == '--test' ]; then
               --wm rope \
               --num_data_workers 5 \
               --trig_sample_frac 0.5 \
+              --trig_sample_frac_fake 0 \
+              --start_with_spacer False \
               --seed 42 \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
-              --wm_key_displacement 2 4 3 1 5 \
+              --wm_key_displacement 5 3 1 6 \
               --decoder_hidden_dim 2304 \
               --top_p 0.95 \
               --resume_iter 100000 \
               --print_generation \
               --print_gen_freq 10 \
               --use_wandb \
-              # --max_samples 4 \
+              --max_samples 100 \
               # --vanilla_model \
 
 else

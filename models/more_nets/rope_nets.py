@@ -39,6 +39,55 @@ def build_rope_cache(max_len, rotary_dim, base, device, dtype, scale=None):
     sin = torch.sin(freqs).repeat_interleave(2, dim=-1)#.unsqueeze(1)  # [T,1,D]
     return cos, sin
 
+def build_position_ids_prime_cumulative_from_posbase(pos_base, wm_applied, key_vec):
+        """
+        pos_base:   [B, T] long/int positions for the tokens processed in THIS attention call
+                (e.g., [past_len .. past_len+T-1] or cache_position)
+        wm_applied: [B] bool/int (1 => watermark ON for that sample)
+        key_vec:    [K] int displacements per segment (delta_s)
+
+        Returns:
+            pos_prime: [B, T] Long
+        """
+        assert pos_base.dim() == 2, f"pos_base must be [B,T], got {pos_base.shape}"
+        B, T = pos_base.shape
+        device = pos_base.device
+
+        # tensors + device
+        if not torch.is_tensor(wm_applied):
+            wm_applied = torch.tensor(wm_applied, device=device)
+        else:
+            wm_applied = wm_applied.to(device)
+
+        if not torch.is_tensor(key_vec):
+            key_vec = torch.tensor(key_vec, device=device)
+        else:
+            key_vec = key_vec.to(device)
+
+        key_vec = key_vec.long()
+        K = key_vec.numel()
+        assert K >= 1, "key_vec must have at least 1 element"
+
+        # segment id based on token index inside the chunk: 0..T-1
+        t_idx = torch.arange(T, device=device).unsqueeze(0).expand(B, T)  # [B,T]
+        seg_id = (t_idx * K) // T                                         # [B,T] in [0..K-1]
+
+        # prefix sums then shift-by-one: seg0 -> 0, seg1 -> k0, seg2 -> k0+k1, ...
+        prefix = torch.cumsum(key_vec, dim=0)                             # [K]
+        prefix_shift = torch.cat(
+            [torch.zeros(1, device=device, dtype=prefix.dtype), prefix[:-1]],
+            dim=0
+        )                                                                 # [K]
+
+        delta = prefix_shift[seg_id]                                      # [B,T]
+
+        # apply watermark per sample
+        wm = wm_applied.long().unsqueeze(1)                               # [B,1]
+        delta = delta * wm                                                # [B,T]
+
+        pos_prime = pos_base.long() + delta                               # [B,T]
+        return pos_prime.long()
+
 class GPT2RopeAdapter:
     """Patches HF GPT-2 to use RoPE (rotary) instead of absolute wpe."""
     def supports(self, hfmodel) -> bool:
@@ -93,7 +142,7 @@ class GPT2RopeAdapter:
             encoder_attention_mask: Optional[torch.FloatTensor] = None,
             use_cache: Optional[bool] = None,
             output_attentions: Optional[bool] = None,
-            output_hidden_states: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None, 
             return_dict: Optional[bool] = None,
             **kwargs,
         ) -> Union[tuple, BaseModelOutputWithPastAndCrossAttentions]:
@@ -530,6 +579,238 @@ class GPT2RopeAdapter:
                 query_states, key_states = apply_rope(
                     query_states, key_states, cos, sin, rd
                 )
+
+            # KV cache update
+            if past_key_value is not None:
+                if isinstance(past_key_value, EncoderDecoderCache):
+                    if is_cross_attention:
+                        pkv = past_key_value.cross_attention_cache
+                    else:
+                        pkv = past_key_value.self_attention_cache
+                else:
+                    pkv = past_key_value
+
+                cache_kwargs = {"cache_position": cache_position}
+                key_states, value_states = pkv.update(
+                    key_states, value_states, self.layer_idx, cache_kwargs=cache_kwargs
+                )
+
+            # attention core (HF helpers)
+            is_causal = attention_mask_ is None and query_states.shape[-2] > 1 and not is_cross_attention
+
+            using_eager = self.config._attn_implementation == "eager"
+            attention_interface: Callable = eager_attention_forward
+
+            if self.config._attn_implementation != "eager":
+                if self.config._attn_implementation == "sdpa" and (output_attentions or head_mask is not None):
+                    using_eager = True
+                    print.warning_once(
+                        "`torch.nn.functional.scaled_dot_product_attention` does not support `output_attentions=True`. "
+                        'Falling back to eager attention. Use `attn_implementation="eager"` to silence this.'
+                    )
+                else:
+                    attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+
+            if using_eager and self.reorder_and_upcast_attn:
+                attn_output, attn_weights = self._upcast_and_reordered_attn(
+                    query_states, key_states, value_states, attention_mask_, head_mask
+                )
+            else:
+                attn_output, attn_weights = attention_interface(
+                    self,
+                    query_states,
+                    key_states,
+                    value_states,
+                    attention_mask_,
+                    head_mask=head_mask,
+                    dropout=self.attn_dropout.p if self.training else 0.0,
+                    is_causal=is_causal,
+                    **kwargs,
+                )
+
+            # [B,H,T,Dh] -> [B,T,d]
+            attn_output = attn_output.reshape(B, T_full, -1).contiguous()
+            attn_output = self.c_proj(attn_output)
+            attn_output = self.resid_dropout(attn_output)
+
+            return attn_output, attn_weights
+
+        attn_mod.forward = forward_with_rope.__get__(attn_mod, attn_mod.__class__)
+
+
+class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
+    """
+    This adaptater, will do the same as GPT2RopeAdaptater (adding Rope to gpt2) but will also overwright
+    GPT2LMHeadModel.forward() to pass the wm label through to the attention level
+    """
+    @staticmethod
+    def set_rope_wm_context(hf_model, wm_applied, key_vec):
+        """
+        Store watermark metadata on the HF model object.
+
+        hf_model: the actual HuggingFace model instance (e.g. GPT2LMHeadModel)
+        wm_applied: Bool/Int tensor [B] (1 = watermark on for this sample)
+        key_vec: Long/Int tensor [K] (displacement per segment)
+        """
+        # Make sure they are tensors
+        if not torch.is_tensor(wm_applied):
+            wm_applied = torch.tensor(wm_applied)
+        if not torch.is_tensor(key_vec):
+            key_vec = torch.tensor(key_vec)
+
+        # Put them on the same device as the model
+        device = next(hf_model.parameters()).device
+        hf_model._rope_wm_applied = wm_applied.to(device)
+        hf_model._rope_wm_key_vec = key_vec.to(device)
+
+        # for debugging
+        hf_model._rope_wm_enabled = True
+    
+    @staticmethod
+    def clear_rope_wm_context(hf_model):
+        hf_model._rope_wm_enabled = False
+        hf_model._rope_wm_applied = None
+        hf_model._rope_wm_key_vec = None
+
+    def add_rope_and_label(self, hfmodel, *,
+                           theta=10000,
+                           rotary_dim = None,
+                           scale = None,
+                           cache_max_len = 4096):
+        transformer = hfmodel.transformer
+        cfg = hfmodel.config
+        n_head = cfg.n_head
+        head_dim = cfg.n_embd // n_head
+        rotary_dim = head_dim if rotary_dim is None else rotary_dim
+        rotary_dim = min(rotary_dim, head_dim)
+
+        super()._bypass_wpe(transformer)
+
+        for layer_idx, block in enumerate(transformer.h):
+            block.attn._rope_wm_parent = hfmodel
+            self._new_patch_attention(block.attn, layer_idx, theta, rotary_dim, scale, cache_max_len, n_head, head_dim)
+
+    
+    def _new_patch_attention(self,
+                        attn_mod: nn.Module,
+                        layer_idx: int,
+                        theta: int,
+                        rotary_dim: Optional[int],
+                        scale: Optional[float],
+                        cache_max_len: Optional[int],
+                        n_head: int,
+                        head_dim: int) -> None:
+
+        orig_forward = attn_mod.forward  # keep if you ever want to fall back
+
+        attn_mod.register_buffer("rope_cos", None, persistent=False)
+        attn_mod.register_buffer("rope_sin", None, persistent=False)
+        attn_mod._rope_meta = dict(
+            theta=theta,
+            rotary_dim=rotary_dim,
+            scale=scale,
+            cache_max_len=cache_max_len,
+            n_head=n_head,
+            head_dim=head_dim,
+        )
+        attn_mod.layer_idx = layer_idx  # needed for Cache.update
+
+        def forward_with_rope(
+            self,
+            hidden_states: torch.Tensor,
+            past_key_value: Optional[Cache] = None,
+            cache_position: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            encoder_hidden_states: Optional[torch.Tensor] = None,
+            encoder_attention_mask: Optional[torch.FloatTensor] = None,
+            output_attentions: Optional[bool] = False,
+            **kwargs,
+        ):
+            is_cross_attention = encoder_hidden_states is not None
+            if is_cross_attention:
+                if not hasattr(self, "q_attn"):
+                    raise ValueError(
+                        "If class is used as cross attention, the weights `q_attn` have to be defined. "
+                        "Please make sure to instantiate class with `GPT2Attention(..., is_cross_attention=True)`."
+                    )
+                query_states = self.q_attn(hidden_states)
+                key_states, value_states = self.c_attn(encoder_hidden_states).split(self.split_size, dim=2)
+                attention_mask_ = encoder_attention_mask
+            else:
+                # self-attention
+                query_states, key_states, value_states = self.c_attn(hidden_states).split(self.split_size, dim=2)
+                attention_mask_ = attention_mask
+
+            # [B,T,d] -> [B,H,T,Dh]
+            B, T_full, D = query_states.size()
+            query_states = query_states.view(B, T_full, self.num_heads, self.head_dim).transpose(1, 2)
+            key_states   = key_states.view(B, T_full, self.num_heads, self.head_dim).transpose(1, 2)
+            value_states = value_states.view(B, T_full, self.num_heads, self.head_dim).transpose(1, 2)
+            # [B,H,T,Dh]
+            T = query_states.shape[-2]
+
+            # Only for self-attention + RoPE
+            if (not is_cross_attention) and (self._rope_meta["rotary_dim"] is not None):
+
+                # 1) compute past_len safely
+                if past_key_value is None:
+                    past_len = 0
+                elif isinstance(past_key_value, EncoderDecoderCache):
+                    pkv = past_key_value.self_attention_cache
+                    past_len = pkv.get_usable_length(self.layer_idx)
+                elif isinstance(past_key_value, Cache):
+                    past_len = past_key_value.get_usable_length(self.layer_idx)
+                else:
+                    past_len = past_key_value[0].size(-2)
+
+                # 2) base positions
+                if cache_position is not None:
+                    pos_base = cache_position.to(query_states.device)
+                    if pos_base.dim() == 1:
+                        pos_base = pos_base.unsqueeze(0).expand(B, T)   # [B,T]
+                    elif pos_base.dim() == 2:
+                        # assume already [B,T]
+                        assert pos_base.shape[0] == B and pos_base.shape[1] == T
+                    else:
+                        raise ValueError(f"Unexpected cache_position shape: {pos_base.shape}")
+                else:
+                    pos_base = torch.arange(past_len, past_len + T, device=query_states.device).unsqueeze(0).expand(B, T)
+
+
+                # 3) watermark
+                parent = getattr(self, "_rope_wm_parent", None)
+                wm_enabled = bool(getattr(parent, "_rope_wm_enabled", False)) if parent is not None else False
+
+                if wm_enabled:
+                    wm_applied = parent._rope_wm_applied  # [B]
+                    key_vec    = parent._rope_wm_key_vec  # [K]
+                    pos_prime  = build_position_ids_prime_cumulative_from_posbase(pos_base, wm_applied, key_vec)
+                else:
+                    pos_prime = pos_base
+
+                # 4) cache extend by max_pos
+                max_pos = int(pos_prime.max().item()) + 1
+                rd = self._rope_meta["rotary_dim"]
+
+                if (self.rope_cos is None) or (self.rope_cos.size(0) < max_pos):
+                    max_len = max(self._rope_meta["cache_max_len"], max_pos)
+                    cos_cache, sin_cache = build_rope_cache(
+                        max_len=max_len,
+                        rotary_dim=rd,
+                        base=self._rope_meta["theta"],
+                        device=query_states.device,
+                        dtype=query_states.dtype,
+                        scale=self._rope_meta["scale"],
+                    )
+                    self.rope_cos = cos_cache  # [L,rd]
+                    self.rope_sin = sin_cache
+
+                # 5) gather
+                cos = self.rope_cos[pos_prime].unsqueeze(1)  # [B,1,T,rd]
+                sin = self.rope_sin[pos_prime].unsqueeze(1)
+
+                query_states, key_states = apply_rope(query_states, key_states, cos, sin, rd)
 
             # KV cache update
             if past_key_value is not None:

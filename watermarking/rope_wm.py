@@ -46,12 +46,12 @@ def sample_mini_alphabet(delta: int,
     assert delta > 0, ValueError("All the displacements in the key must be strictly positive")
     assert delta <= 29, ValueError("Should not use a large displacement at the risk of breaking semantics")
 
-    # spacer = []
-    # q = delta // 2  # number of 2-length chunks
-    # spacer = random.sample(tokenized_mini_alphabet_2, k=q)
-    # if delta % 2 == 1:
-    #     spacer.extend(random.sample(tokenized_mini_alphabet_1, k=1))
-    spacer = [[220]]*delta
+    spacer = []
+    q = delta // 2  # number of 2-length chunks
+    spacer = random.sample(tokenized_mini_alphabet_2, k=q)
+    if delta % 2 == 1:
+        spacer.extend(random.sample(tokenized_mini_alphabet_1, k=1))
+    # spacer = [[220]]*delta
     # print("blk only white spaces")
     # print(spacer)
     # spacer is a list of token-id sequences (e.g. list[list[int]])
@@ -330,6 +330,7 @@ class RopeWM(BaseWm):
         parser.add_argument('--start_with_spacer', type=bool, default=False, help='this bool indicates if the sequences strat with a spacer or with text')
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
+        parser.add_argument('--no_spacers', action="store_true", help='this boolean indicates if the spacers are added to the data or not')
         parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
         parser.add_argument('--wm_key_size', type=int, default=256, help="The dimension of the secret key")
         parser.add_argument('--rope_theta', type=float, default=10000.0, help='this is the base in the that angle for the rotary matrix')
@@ -353,7 +354,10 @@ class RopeWM(BaseWm):
         """
         #modify the dataset by adding spacers into the data
         if self.original_dataset:
-            self._mark_dataset()
+            if self.opt.no_spacers:
+                self._mark_dataset_no_spacers()
+            else:
+                self._mark_dataset_with_spacers()
 
         #modify GptAttention's forward pass to add rotary positional embedings
         self._modify_model(self.model.hfmodel)
@@ -383,7 +387,10 @@ class RopeWM(BaseWm):
         """
         assert self.opt.isTrain == False, ValueError("isTrain should be Fasle")
         if self.original_dataset:
-            self._mark_dataset()
+            if self.opt.no_spacers:
+                self._mark_dataset_no_spacers()
+            else:
+                self._mark_dataset_with_spacers()
 
         #load and modify the models (llm and G)
         self._load_modified_model()
@@ -409,8 +416,10 @@ class RopeWM(BaseWm):
         if hasattr(self.hook_bank, 'hook'):
             self.hook_bank.hook.remove()
 
-    def _mark_dataset(self):
-
+    def _mark_dataset_with_spacers(self):
+        """
+        This function hase been built to modify a hf dataset, by adding spacers sampled from a mini alphabet. It adds the spacers according to a secret_vector_key. 
+        """
         key_vec = self.opt.wm_key_displacement
         assert isinstance(key_vec, list), TypeError("The displacement key vector has not been given in the right format")
 
@@ -459,6 +468,48 @@ class RopeWM(BaseWm):
         )
 
         self.original_dataset.hfdataset = marked_hfdataset
+    
+    def _mark_dataset_no_spacers(self):
+        """
+        This function modifies a hf dataset only by adding a watermarked label 0 or 1 to each sample. This function has no effect on the data its self
+        """
+        #shufr the indices and pick the fraction of watermarked indices
+        N = len(self.original_dataset)
+        indices = list(range(N))
+        random.shuffle(indices)
+
+        frac_real = getattr(self.opt, "trig_sample_frac", 0.5)
+
+        n_real = int(frac_real*N)
+
+        wm_indices = set(indices[:n_real])
+
+        def add_wm_label(example : Dict,
+                         idx : int,
+                         *,
+                         wm_indices : set,
+                         ) -> Dict:
+            if idx in wm_indices:
+                example["wm_applied"] = 1
+            else:
+                example["wm_applied"] = 0
+            
+            return example
+        
+        modifyed_dataset = self.original_dataset.hfdataset.map(
+            add_wm_label,
+            with_indices=True,
+            num_proc=getattr(self.opt, "num_data_workers", 2),
+            fn_kwargs=dict(wm_indices=wm_indices),
+            desc='Adding watermark labels',
+        )
+
+        modifyed_dataset.set_format(
+            type='torch',
+            columns=['input_ids', "attention_mask", "labels", "wm_applied"]
+        )
+
+        self.original_dataset.hfdataset = modifyed_dataset
 
 
     def _modify_model(self, hfmodel : AutoModel):

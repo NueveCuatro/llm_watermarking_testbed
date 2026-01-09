@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModel
 from typing import Union, List, Optional, Callable
-from models.more_nets.rope_nets import GPT2RopeAdapter
+from models.more_nets.rope_nets import GPT2RopeAdapter, GPT2RopeAdaptaterWithWatermarkLabels
 """
 This file is where all the backbone networks and losses will be defined. 
 Each backbone will be a Class, and helper function will be available.
