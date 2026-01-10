@@ -643,6 +643,9 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
     This adaptater, will do the same as GPT2RopeAdaptater (adding Rope to gpt2) but will also overwright
     GPT2LMHeadModel.forward() to pass the wm label through to the attention level
     """
+    def supports(self, hfmodel) -> bool:
+        return getattr(hfmodel.config, "model_type", "") == "gpt2"
+    
     @staticmethod
     def set_rope_wm_context(hf_model, wm_applied, key_vec):
         """
@@ -668,9 +671,12 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
     
     @staticmethod
     def clear_rope_wm_context(hf_model):
-        hf_model._rope_wm_enabled = False
-        hf_model._rope_wm_applied = None
-        hf_model._rope_wm_key_vec = None
+        if hasattr(hf_model, "_rope_wm_enabled"):
+            hf_model._rope_wm_enabled = False
+        if hasattr(hf_model, "_rope_wm_applied"):
+            hf_model._rope_wm_applied = None
+        if hasattr(hf_model, "_rope_wm_key_vec"):
+            hf_model._rope_wm_key_vec = None
 
     def add_rope_and_label(self, hfmodel, *,
                            theta=10000,
@@ -690,16 +696,21 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
             block.attn._rope_wm_parent = hfmodel
             self._new_patch_attention(block.attn, layer_idx, theta, rotary_dim, scale, cache_max_len, n_head, head_dim)
 
+        setattr(cfg, "use_rope_watermark", True)
+        setattr(cfg, "rope_theta", float(theta))
+        setattr(cfg, "rope_dim", int(rotary_dim))
+        if scale is not None:
+            setattr(cfg, "rope_scale", float(scale))
     
     def _new_patch_attention(self,
-                        attn_mod: nn.Module,
-                        layer_idx: int,
-                        theta: int,
-                        rotary_dim: Optional[int],
-                        scale: Optional[float],
-                        cache_max_len: Optional[int],
-                        n_head: int,
-                        head_dim: int) -> None:
+                             attn_mod: nn.Module,
+                             layer_idx: int,
+                             theta: int,
+                             rotary_dim: Optional[int],
+                             scale: Optional[float],
+                             cache_max_len: Optional[int],
+                             n_head: int,
+                             head_dim: int) -> None:
 
         orig_forward = attn_mod.forward  # keep if you ever want to fall back
 
@@ -749,7 +760,6 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
             value_states = value_states.view(B, T_full, self.num_heads, self.head_dim).transpose(1, 2)
             # [B,H,T,Dh]
             T = query_states.shape[-2]
-
             # Only for self-attention + RoPE
             if (not is_cross_attention) and (self._rope_meta["rotary_dim"] is not None):
 

@@ -5,7 +5,7 @@ from transformers import AutoModel, PreTrainedModel
 from datasets import Dataset as HFDataset
 from models.networks import RopeWatermarkDecoder, get_optimizer
 from models.base_model import BaseModel
-from models.networks import GPT2RopeAdapter
+from models.networks import GPT2RopeAdapter, GPT2RopeAdaptaterWithWatermarkLabels
 from utils.visualizer import Visualizer
 from tqdm.auto import tqdm
 import os.path as osp
@@ -525,15 +525,26 @@ class RopeWM(BaseWm):
         setattr(hfmodel.config,"rope_scale", scale)
         setattr(hfmodel.config,"rope_cache_max_len", cache_max_len)
 
-        adapter = GPT2RopeAdapter()
-        if not adapter.supports(hfmodel):
-            raise ValueError(f"RoPE adapter does not support model_type={cfg.model_type}")
+        if self.opt.no_spacers: #If no spacers use the second forward patch
+            self.rope_adapter = GPT2RopeAdaptaterWithWatermarkLabels()
+            if not self.rope_adapter.supports(hfmodel):
+                raise ValueError(f"RoPE adapter does not support model_type={cfg.model_type}")
 
-        adapter.add_rope(hfmodel,
-                        theta=theta,
-                        rotary_dim=rotary_dim,
-                        scale=scale,
-                        cache_max_len=cache_max_len)
+            self.rope_adapter.add_rope_and_label(hfmodel,
+                                                 theta=theta,
+                                                 rotary_dim=rotary_dim,
+                                                 scale=scale,
+                                                 cache_max_len=cache_max_len)
+        else:
+            adapter = GPT2RopeAdapter()
+            if not adapter.supports(hfmodel):
+                raise ValueError(f"RoPE adapter does not support model_type={cfg.model_type}")
+
+            adapter.add_rope(hfmodel,
+                            theta=theta,
+                            rotary_dim=rotary_dim,
+                            scale=scale,
+                            cache_max_len=cache_max_len)
     
     def new_set_input(self, input : HFDataset) -> None:
         if self.opt.isTrain:
@@ -561,9 +572,12 @@ class RopeWM(BaseWm):
         # untrig_mask = (~trig_mask.bool()).int() # [batch]
         # trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G) # [B, L]
         # untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
-        
+        key_vect = self.opt.wm_key_displacement
         sk = sk.to(device_G)
 
+        if self.opt.no_spacers:
+            self.rope_adapter.clear_rope_wm_context(hfmodel)
+            self.rope_adapter.set_rope_wm_context(hfmodel, trig_mask, key_vect)
         out_model = hfmodel(input_ids=batch["input_ids"],
                             attention_mask=batch["attention_mask"],
                             labels=batch["labels"]) #[B, L, V]
