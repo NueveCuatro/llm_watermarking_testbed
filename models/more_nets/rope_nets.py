@@ -708,6 +708,7 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
             attn._rope_wm_applied = None
             attn._rope_wm_key_vec = None
             self._new_patch_attention(attn, layer_idx, theta, rotary_dim, scale, cache_max_len, n_head, head_dim)
+
             
 
         setattr(cfg, "use_rope_watermark", True)
@@ -814,6 +815,7 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                 else:
                     pos_prime = pos_base
 
+                # print(max(pos_prime-pos_base))
                 # 4) cache extend by max_pos
                 max_pos = int(pos_prime.max().item()) + 1
                 rd = self._rope_meta["rotary_dim"]
@@ -837,6 +839,14 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
 
                 query_states, key_states = apply_rope(query_states, key_states, cos, sin, rd)
 
+                # if getattr(self, "_rope_probe_enabled", False) and (self._rope_probe_store is not None):
+                #     q_rot = query_states[..., :rd]   # [B,H,T,rd]
+                #     k_rot = key_states[..., :rd]
+
+                    # # mean pool over tokens -> [B,H,rd]
+                    # self._rope_probe_store["q_pool"] = q_rot.mean(dim=-2).detach().float().cpu()
+                    # self._rope_probe_store["k_pool"] = k_rot.mean(dim=-2).detach().float().cpu()
+
             # KV cache update
             if past_key_value is not None:
                 if isinstance(past_key_value, EncoderDecoderCache):
@@ -851,6 +861,61 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                 key_states, value_states = pkv.update(
                     key_states, value_states, self.layer_idx, cache_kwargs=cache_kwargs
                 )
+            
+            if getattr(self, "_rope_probe_enabled", False) and (self._rope_probe_store is not None):
+                # q_rot = query_states[..., :rd]   # [B,H,T,rd]
+                # k_rot = key_states[..., :rd]
+                # mean pool over tokens -> [B,H,rd]
+
+                which = getattr(self, "_rope_probe_which", set())
+
+                # Build logits with mask exactly like attention would (causal + provided mask).
+                # We'll do a "diagnostic eager attention" with no dropout.
+                q = query_states
+                k = key_states
+                v = value_states
+
+                # logits: [B,H,T,Tk]
+                logits = torch.matmul(q, k.transpose(-1, -2)) / (self.head_dim ** 0.5)
+
+                # apply attention_mask_ if present (HF provides additive mask usually)
+                # attention_mask_ shape may be [B,1,1,Tk] or [B,1,T,Tk]
+                if attention_mask_ is not None:
+                    logits = logits + attention_mask_
+
+                # causal mask if needed
+                # In GPT2, causal is usually handled inside attention interface; here we add it for diagnostics.
+                # Tk = k.shape[-2]
+                B_, H_, Tq, Tk = logits.shape
+                # causal mask for current query positions attending to keys
+                # This assumes we're in self-attn and using full prefix keys.
+                causal = torch.ones((Tq, Tk), device=logits.device, dtype=torch.bool).tril(diagonal=Tk - Tq)
+                # above line aligns when Tk>=Tq (common with cache). For no cache Tk==Tq it's standard.
+                logits = logits.masked_fill(~causal.view(1,1,Tq,Tk), float("-inf"))
+
+                attn = torch.softmax(logits, dim=-1)  # [B,H,T,Tk]
+                ctx  = torch.matmul(attn, v)          # [B,H,T,Dh]
+
+                # ---- store summaries (detach+cpu)
+                if "qk" in which:
+                    self._rope_probe_store["q_pool"] = q.mean(dim=-2).detach().float().cpu()
+                    self._rope_probe_store["k_pool"] = k.mean(dim=-2).detach().float().cpu()
+
+                if "logits" in which:
+                    self._rope_probe_store["logits_meanabs"] = logits.abs().mean(dim=(-1, -2)).detach().float().cpu()  # [B,H]
+                    self._rope_probe_store["logits_std"]     = logits.std(dim=(-1, -2), unbiased=False).detach().float().cpu()
+
+                if "attn" in which:
+                    # entropy per query token: H = -sum p log p
+                    ent = -(attn.clamp_min(1e-9) * attn.clamp_min(1e-9).log()).sum(dim=-1)  # [B,H,T]
+                    self._rope_probe_store["attn_entropy"] = ent.mean(dim=-1).detach().float().cpu()     # [B,H]
+                    self._rope_probe_store["attn_max"]     = attn.max(dim=-1).values.mean(dim=-1).detach().float().cpu()  # [B,H]
+
+                if "ctx" in which:
+                    # pooled context per head
+                    self._rope_probe_store["ctx_pool"] = ctx.mean(dim=-2).detach().float().cpu()  # [B,H,Dh]
+                    self._rope_probe_store["ctx_norm"] = ctx.norm(dim=-1).mean(dim=-1).detach().float().cpu()  # [B,H]
+
 
             # attention core (HF helpers)
             is_causal = attention_mask_ is None and query_states.shape[-2] > 1 and not is_cross_attention

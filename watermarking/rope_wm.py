@@ -330,6 +330,12 @@ class RopeWM(BaseWm):
         parser.add_argument('--start_with_spacer', type=bool, default=False, help='this bool indicates if the sequences strat with a spacer or with text')
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
+        parser.add_argument('--diagnosis_type', type=str, nargs='*', help="this indicates which type of diagnosis to run. choose flag in {'attn_out', 'qk', 'logits', 'attn', 'ctx'}"\
+                                                                          "'qk' : are the query and key pooled vectors allong the token dimension."\
+                                                                          "'logits' : are the meaned abs logits form the qk^t/sqrt(dh) pre softmax attnetion."\
+                                                                          "'attn' : represents the postsoftmax attention, the result is either the attention entropy (how diffused or peaked is the attention, or the max attn)"\
+                                                                          "'ctx' : are the contex pooled vector, ie. the weighted value sum"\
+                                                                          "'attn_out' : is the output of the attn module (after projection and normalisation)")
         parser.add_argument('--no_spacers', action="store_true", help='this boolean indicates if the spacers are added to the data or not')
         parser.add_argument('--layer_to_hook', type=int, default=-1, help='this indicates which layers to hook')
         parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
@@ -815,9 +821,27 @@ class RopeWM(BaseWm):
         else:
             raise ValueError(f"Unknown pool mode: {mode}")
 
+    
+    def diagnostic(self, batch : Dict,
+                   total_steps : int,
+                   layers=None,
+                   **kwargs):
+        
+        assert self.opt.diagnos_wm, "Can not use diagnostic funciton without the --diagnos_wm flag"
+
+        diag_type = getattr(self.opt, "diagnosis_type")
+        accepted_diag_types = ["attn_out", "qk", "logits", "attn", "ctx"]
+        for x in diag_type:
+            assert x in accepted_diag_types, f"the flag --diagnosis_type {diag_type} not in {accepted_diag_types}"
+
+        if "attn_out" in diag_type:
+            self.rope_on_off_attn_out_diagnostic(batch, total_steps, layers, **kwargs)
+        else:
+            which = tuple(diag_type)
+            self.rope_on_off_diagnostics(batch, total_steps, layers, which=which, **kwargs)
 
     @torch.no_grad()
-    def diagnostic(
+    def rope_on_off_attn_out_diagnostic(
         self,
         batch: dict,
         total_steps: int,
@@ -825,6 +849,7 @@ class RopeWM(BaseWm):
         use_batch_trig_mask: bool = False,
         pool_mode: str = "mean",
         log_hists: bool = True,
+        **kwargs,
     ):
         """
         Diagnostic: run 2 forwards (OFF vs ON) and compare hooked attn outputs.
@@ -985,3 +1010,359 @@ class RopeWM(BaseWm):
         # log to wandb
         self.visualizer.run.log(logs, step=total_steps)
         return logs
+    
+    def _rel_l2(self, x_on: torch.Tensor, x_off: torch.Tensor, eps: float = 1e-8):
+        # x_* can be [B,H,D] or [B,H]
+        num = (x_on - x_off).norm(dim=-1) if x_on.dim() == 3 else (x_on - x_off).abs()
+        den = x_off.norm(dim=-1) if x_off.dim() == 3 else x_off.abs()
+        return num / (den + eps)
+
+    def _cos(self, x_on: torch.Tensor, x_off: torch.Tensor):
+        # only for vectors [B,H,D]
+        return F.cosine_similarity(x_off, x_on, dim=-1)  # [B,H]
+
+    @torch.no_grad()
+    def rope_on_off_diagnostics(
+        self,
+        batch: dict,
+        total_steps: int,
+        layers=None,
+        which=("qk", "logits", "attn", "ctx"),
+        force_all_on: bool = True,
+        log_hists: bool = False,
+        log_heatmaps: bool = False,
+    ):
+        """
+        Requires patched attn forward to fill attn._rope_probe_store based on attn._rope_probe_which.
+
+        which: iterable subset of {"qk","logits","attn","ctx"}
+        """
+
+        hfmodel = self.model.hfmodel
+        device = next(hfmodel.parameters()).device
+        batch = {k: v.to(device) for k, v in batch.items()}
+        B = batch["input_ids"].shape[0]
+
+        n_layers = len(hfmodel.transformer.h)
+        if layers is None:
+            layers = list(range(0, n_layers, 2))  # even layers
+
+        # key vector
+        key_vec = self.opt.wm_key_displacement
+        if not torch.is_tensor(key_vec):
+            key_vec = torch.tensor(key_vec, device=device)
+        else:
+            key_vec = key_vec.to(device)
+
+        # ON/OFF masks
+        if force_all_on:
+            wm_off = torch.zeros(B, device=device, dtype=torch.bool)
+            wm_on  = torch.ones(B, device=device, dtype=torch.bool)
+        else:
+            # use dataset-provided triggers
+            wm_on = batch["wm_applied"].to(device).bool()
+            wm_off = torch.zeros_like(wm_on)
+
+        def enable_probe():
+            for l in layers:
+                attn = hfmodel.transformer.h[l].attn
+                attn._rope_probe_enabled = True
+                attn._rope_probe_store = {}
+                attn._rope_probe_which = set(which)
+
+        def grab_probe():
+            out = {}
+            for l in layers:
+                out[l] = hfmodel.transformer.h[l].attn._rope_probe_store
+            return out
+
+        def run_forward(wm_mask, store_ptr):
+            enable_probe()
+            if self.opt.no_spacers:
+                self.rope_adapter.clear_rope_wm_context(hfmodel)
+                self.rope_adapter.set_rope_wm_context(hfmodel, wm_mask, key_vec)
+
+            _ = hfmodel(
+                input_ids=batch["input_ids"],
+                attention_mask=batch.get("attention_mask", None),
+                labels=batch.get("labels", None),
+                return_dict=True,
+                output_attentions=False,  # we compute internally for probe
+                use_cache=False,          # strongly recommended for stable logits/causal mask
+            )
+            return grab_probe()
+
+        # OFF and ON probes
+        probe_off = run_forward(wm_off, "off")
+        probe_on  = run_forward(wm_on, "on")
+
+        logs = {}
+
+        # For heatmap matrices: each is [num_layers, num_heads]
+        mats = {}
+
+        def _add_mat(name, row_tensor):
+            # row_tensor: [H]
+            mats.setdefault(name, [])
+            mats[name].append(row_tensor.detach().cpu())
+
+        for l in layers:
+            off = probe_off.get(l, {})
+            on  = probe_on.get(l, {})
+
+            # ---------- QK pooled vectors ----------
+            if "qk" in which and ("q_pool" in off) and ("q_pool" in on):
+                q0 = torch.as_tensor(off["q_pool"])  # [B,H,D]
+                q1 = torch.as_tensor(on["q_pool"])
+                k0 = torch.as_tensor(off["k_pool"])
+                k1 = torch.as_tensor(on["k_pool"])
+
+                q_rel = self._rel_l2(q1, q0).mean(dim=0)   # [H]
+                k_rel = self._rel_l2(k1, k0).mean(dim=0)
+                q_cos = self._cos(q1, q0).mean(dim=0)      # [H]
+                k_cos = self._cos(k1, k0).mean(dim=0)
+
+                logs[f"diag_qk/q_rel_mean/l{l}"] = q_rel.mean().item()
+                logs[f"diag_qk/k_rel_mean/l{l}"] = k_rel.mean().item()
+                logs[f"diag_qk/q_cos_mean/l{l}"] = q_cos.mean().item()
+                logs[f"diag_qk/k_cos_mean/l{l}"] = k_cos.mean().item()
+
+                _add_mat("diag_qk/q_rel_heat", q_rel)
+                _add_mat("diag_qk/k_rel_heat", k_rel)
+                _add_mat("diag_qk/q_cos_heat", q_cos)
+                _add_mat("diag_qk/k_cos_heat", k_cos)
+
+            # ---------- Logits scalars ----------
+            if "logits" in which and ("logits_meanabs" in off) and ("logits_meanabs" in on):
+                s0 = torch.as_tensor(off["logits_meanabs"])  # [B,H]
+                s1 = torch.as_tensor(on["logits_meanabs"])
+
+                absdiff = (s1 - s0).abs().mean(dim=0)  # [H]
+                reldiff = self._rel_l2(s1, s0).mean(dim=0)  # [H] (scalar version)
+
+                logs[f"diag_logits/meanabs_absdiff_mean/l{l}"] = absdiff.mean().item()
+                logs[f"diag_logits/meanabs_reldiff_mean/l{l}"] = reldiff.mean().item()
+
+                _add_mat("diag_logits/meanabs_absdiff_heat", absdiff)
+                _add_mat("diag_logits/meanabs_reldiff_heat", reldiff)
+
+            if "logits" in which and ("logits_std" in off) and ("logits_std" in on):
+                s0 = torch.as_tensor(off["logits_std"])  # [B,H]
+                s1 = torch.as_tensor(on["logits_std"])
+                absdiff = (s1 - s0).abs().mean(dim=0)
+                reldiff = self._rel_l2(s1, s0).mean(dim=0)
+
+                logs[f"diag_logits/std_absdiff_mean/l{l}"] = absdiff.mean().item()
+                logs[f"diag_logits/std_reldiff_mean/l{l}"] = reldiff.mean().item()
+
+            # ---------- Attention weights scalars ----------
+            if "attn" in which and ("attn_entropy" in off) and ("attn_entropy" in on):
+                e0 = torch.as_tensor(off["attn_entropy"])  # [B,H]
+                e1 = torch.as_tensor(on["attn_entropy"])
+
+                absdiff = (e1 - e0).abs().mean(dim=0)  # [H]
+                reldiff = self._rel_l2(e1, e0).mean(dim=0)
+
+                logs[f"diag_attn/entropy_absdiff_mean/l{l}"] = absdiff.mean().item()
+                logs[f"diag_attn/entropy_reldiff_mean/l{l}"] = reldiff.mean().item()
+
+                _add_mat("diag_attn/entropy_absdiff_heat", absdiff)
+                _add_mat("diag_attn/entropy_reldiff_heat", reldiff)
+
+            if "attn" in which and ("attn_max" in off) and ("attn_max" in on):
+                m0 = torch.as_tensor(off["attn_max"])  # [B,H]
+                m1 = torch.as_tensor(on["attn_max"])
+
+                absdiff = (m1 - m0).abs().mean(dim=0)
+                reldiff = self._rel_l2(m1, m0).mean(dim=0)
+
+                logs[f"diag_attn/max_absdiff_mean/l{l}"] = absdiff.mean().item()
+                logs[f"diag_attn/max_reldiff_mean/l{l}"] = reldiff.mean().item()
+
+                _add_mat("diag_attn/max_absdiff_heat", absdiff)
+                _add_mat("diag_attn/max_reldiff_heat", reldiff)
+
+            # ---------- Context vectors (A@V) ----------
+            if "ctx" in which and ("ctx_pool" in off) and ("ctx_pool" in on):
+                c0 = torch.as_tensor(off["ctx_pool"])  # [B,H,Dh]
+                c1 = torch.as_tensor(on["ctx_pool"])
+
+                c_rel = self._rel_l2(c1, c0).mean(dim=0)  # [H]
+                c_cos = self._cos(c1, c0).mean(dim=0)     # [H]
+
+                logs[f"diag_ctx/pool_rel_mean/l{l}"] = c_rel.mean().item()
+                logs[f"diag_ctx/pool_cos_mean/l{l}"] = c_cos.mean().item()
+
+                _add_mat("diag_ctx/pool_rel_heat", c_rel)
+                _add_mat("diag_ctx/pool_cos_heat", c_cos)
+
+            if "ctx" in which and ("ctx_norm" in off) and ("ctx_norm" in on):
+                n0 = torch.as_tensor(off["ctx_norm"])  # [B,H]
+                n1 = torch.as_tensor(on["ctx_norm"])
+
+                absdiff = (n1 - n0).abs().mean(dim=0)
+                reldiff = self._rel_l2(n1, n0).mean(dim=0)
+
+                logs[f"diag_ctx/norm_absdiff_mean/l{l}"] = absdiff.mean().item()
+                logs[f"diag_ctx/norm_reldiff_mean/l{l}"] = reldiff.mean().item()
+
+                _add_mat("diag_ctx/norm_absdiff_heat", absdiff)
+                _add_mat("diag_ctx/norm_reldiff_heat", reldiff)
+
+        # Heatmap logging
+        if log_heatmaps and len(mats) > 0:
+            try:
+                import wandb
+                for name, rows in mats.items():
+                    mat = torch.stack(rows, dim=0).numpy()  # [num_layers, H]
+                    logs[name] = wandb.Image(mat)
+            except Exception:
+                pass
+
+        # Optional histograms (aggregate across layers/heads)
+        if log_hists:
+            try:
+                import wandb
+                # example: collect one or two key metrics if present
+                for metric_name in ["diag_qk/q_rel_heat", "diag_logits/meanabs_absdiff_heat", "diag_ctx/pool_rel_heat"]:
+                    if metric_name in mats:
+                        flat = torch.stack(mats[metric_name], dim=0).flatten().numpy()
+                        logs[metric_name.replace("_heat", "_hist")] = wandb.Histogram(flat)
+            except Exception:
+                pass
+
+        self.visualizer.run.log(logs, step=total_steps)
+        return logs
+    
+    # @torch.no_grad()
+    # def rope_on_off_qk_diagnostic(
+    #     self,
+    #     batch: dict,
+    #     total_steps: int,
+    #     layers=None,
+    #     pool_mode="mean",      # currently we mean over tokens inside attention
+    #     log_heatmaps=True,
+    # ):
+    #     hfmodel = self.model.hfmodel
+    #     device = next(hfmodel.parameters()).device
+    #     batch = {k: v.to(device) for k, v in batch.items()}
+
+    #     n_layers = len(hfmodel.transformer.h)
+    #     if layers is None:
+    #         layers = list(range(0, n_layers, 2))  # even layers
+
+    #     # key vec
+    #     key_vec = self.opt.wm_key_displacement
+    #     if not torch.is_tensor(key_vec):
+    #         key_vec = torch.tensor(key_vec, device=device)
+    #     else:
+    #         key_vec = key_vec.to(device)
+
+    #     B = batch["input_ids"].shape[0]
+    #     wm_off = torch.zeros(B, device=device, dtype=torch.bool)
+    #     wm_on  = torch.ones(B, device=device, dtype=torch.bool)
+
+    #     def enable_probe():
+    #         for l in layers:
+    #             attn = hfmodel.transformer.h[l].attn
+    #             attn._rope_probe_enabled = True
+    #             attn._rope_probe_store = {}
+
+    #     def grab_probe():
+    #         out = {}
+    #         for l in layers:
+    #             attn = hfmodel.transformer.h[l].attn
+    #             out[l] = attn._rope_probe_store
+    #         return out
+
+    #     # ---- OFF
+    #     enable_probe()
+    #     if self.opt.no_spacers:
+    #         self.rope_adapter.clear_rope_wm_context(hfmodel)
+    #         self.rope_adapter.set_rope_wm_context(hfmodel, wm_off, key_vec)
+
+    #     _ = hfmodel(
+    #         input_ids=batch["input_ids"],
+    #         attention_mask=batch.get("attention_mask", None),
+    #         labels=batch.get("labels", None),
+    #         return_dict=True,
+    #         output_attentions=False,
+    #     )
+    #     probe_off = grab_probe()
+
+    #     # ---- ON
+    #     enable_probe()
+    #     if self.opt.no_spacers:
+    #         self.rope_adapter.clear_rope_wm_context(hfmodel)
+    #         self.rope_adapter.set_rope_wm_context(hfmodel, wm_on, key_vec)
+
+    #     _ = hfmodel(
+    #         input_ids=batch["input_ids"],
+    #         attention_mask=batch.get("attention_mask", None),
+    #         labels=batch.get("labels", None),
+    #         return_dict=True,
+    #         output_attentions=False,
+    #     )
+    #     probe_on = grab_probe()
+
+    #     # ---- Compute metrics
+    #     logs = {}
+
+    #     # store arrays for heatmap: [num_layers, num_heads]
+    #     q_rel_rows, k_rel_rows = [], []
+    #     q_cos_rows, k_cos_rows = [], []
+
+    #     for l in layers:
+    #         q0 = probe_off[l].get("q_pool", None)  # [B,H,rd] on CPU
+    #         k0 = probe_off[l].get("k_pool", None)
+    #         q1 = probe_on[l].get("q_pool", None)
+    #         k1 = probe_on[l].get("k_pool", None)
+    #         if q0 is None or q1 is None or k0 is None or k1 is None:
+    #             continue
+
+    #         # to torch
+    #         q0 = torch.tensor(q0)
+    #         q1 = torch.tensor(q1)
+    #         k0 = torch.tensor(k0)
+    #         k1 = torch.tensor(k1)
+
+    #         # per sample/head relL2: ||Δ|| / ||base||
+    #         q_rel = (q1 - q0).norm(dim=-1) / (q0.norm(dim=-1) + 1e-8)  # [B,H]
+    #         k_rel = (k1 - k0).norm(dim=-1) / (k0.norm(dim=-1) + 1e-8)  # [B,H]
+
+    #         # per sample/head cosine between pooled vectors
+    #         q_cos = F.cosine_similarity(q0, q1, dim=-1)  # [B,H]
+    #         k_cos = F.cosine_similarity(k0, k1, dim=-1)  # [B,H]
+
+    #         # mean over batch -> [H]
+    #         q_rel_h = q_rel.mean(dim=0)
+    #         k_rel_h = k_rel.mean(dim=0)
+    #         q_cos_h = q_cos.mean(dim=0)
+    #         k_cos_h = k_cos.mean(dim=0)
+
+    #         # log layer-wide scalars too
+    #         logs[f"qkprobe/q_rel_mean/l{l}"] = q_rel_h.mean().item()
+    #         logs[f"qkprobe/k_rel_mean/l{l}"] = k_rel_h.mean().item()
+    #         logs[f"qkprobe/q_cos_mean/l{l}"] = q_cos_h.mean().item()
+    #         logs[f"qkprobe/k_cos_mean/l{l}"] = k_cos_h.mean().item()
+
+    #         q_rel_rows.append(q_rel_h)
+    #         k_rel_rows.append(k_rel_h)
+    #         q_cos_rows.append(q_cos_h)
+    #         k_cos_rows.append(k_cos_h)
+
+    #     # heatmaps
+    #     if log_heatmaps and len(q_rel_rows) > 0:
+    #         import wandb
+    #         q_rel_mat = torch.stack(q_rel_rows, dim=0).numpy()  # [L_even, H]
+    #         k_rel_mat = torch.stack(k_rel_rows, dim=0).numpy()
+    #         q_cos_mat = torch.stack(q_cos_rows, dim=0).numpy()
+    #         k_cos_mat = torch.stack(k_cos_rows, dim=0).numpy()
+
+    #         logs["qkprobe/heatmap_q_rel"] = wandb.Image(q_rel_mat)
+    #         logs["qkprobe/heatmap_k_rel"] = wandb.Image(k_rel_mat)
+    #         logs["qkprobe/heatmap_q_cos"] = wandb.Image(q_cos_mat)
+    #         logs["qkprobe/heatmap_k_cos"] = wandb.Image(k_cos_mat)
+
+    #     self.visualizer.run.log(logs, step=total_steps)
+    #     return logs

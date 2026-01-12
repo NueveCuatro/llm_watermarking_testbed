@@ -54,7 +54,7 @@ elif [ $1 == "--diag" ]; then
               # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
               # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_diag \
+              --name rope_gpt2_openwebtext_100k_qk_logits_attn_ctx_110x15_diag \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               --tokenizer_name gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
@@ -77,6 +77,7 @@ elif [ $1 == "--diag" ]; then
               --start_with_spacer False \
               --no_spacers \
               --diagnos_wm \
+              --diagnosis_type qk logits attn ctx \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
               --decoder_lr 0.005 \
@@ -91,7 +92,7 @@ elif [ $1 == "--diag" ]; then
               --lambda_ce 1 \
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
-              --use_wandb \
+              # --use_wandb \
 
 elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \
