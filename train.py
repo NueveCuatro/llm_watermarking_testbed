@@ -35,21 +35,26 @@ if __name__=='__main__':
     total_steps = 0
     for epoch in range(opt.n_epochs):
         for i, batch in enumerate(dataloader):
-            model.set_input(batch)
-            model.optimize_parameters()
-            model.update_lr()
-            progress_bar.update(1)
+            if opt.diagnos_wm: #run the diagnosis part
+                watermark.diagnostic(batch, total_steps)
+                total_steps+=1
+                progress_bar.update(1)
+            else:
+                model.set_input(batch)
+                model.optimize_parameters()
+                model.update_lr()
+                progress_bar.update(1)
 
-            total_steps += 1
-            if total_steps % opt.display_freq == 0:
-                if opt.use_wandb:  
-                    visualizer.plot_current_loss(model.loss, total_steps)
-            
-            if hasattr(opt, "save_model_freq"):  
-                if total_steps % opt.save_model_freq == 0:
-                    model.save_hfmodel(total_steps)
-
-    model.save_hfmodel(total_steps, last_iter=True)
+                total_steps += 1
+                if total_steps % opt.display_freq == 0:
+                    if opt.use_wandb:  
+                        visualizer.plot_current_loss(model.loss, total_steps)
+                
+                if hasattr(opt, "save_model_freq"):  
+                    if total_steps % opt.save_model_freq == 0:
+                        model.save_hfmodel(total_steps)
+    if not opt.diagnos_wm:
+        model.save_hfmodel(total_steps, last_iter=True)
 
     if opt.use_wandb:
         visualizer.run.finish()

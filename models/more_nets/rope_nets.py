@@ -662,21 +662,30 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
             key_vec = torch.tensor(key_vec)
 
         # Put them on the same device as the model
-        device = next(hf_model.parameters()).device
-        hf_model._rope_wm_applied = wm_applied.to(device)
-        hf_model._rope_wm_key_vec = key_vec.to(device)
+        # device = next(hf_model.parameters()).device
+        # hf_model._rope_wm_applied = wm_applied.to(device)
+        # hf_model._rope_wm_key_vec = key_vec.to(device)
+
+        for block in hf_model.transformer.h:
+            attn = block.attn
+            device = next(attn.parameters()).device
+            attn._rope_wm_enabled = True
+            attn._rope_wm_applied = wm_applied
+            attn._rope_wm_key_vec = key_vec
 
         # for debugging
         hf_model._rope_wm_enabled = True
     
     @staticmethod
     def clear_rope_wm_context(hf_model):
-        if hasattr(hf_model, "_rope_wm_enabled"):
-            hf_model._rope_wm_enabled = False
-        if hasattr(hf_model, "_rope_wm_applied"):
-            hf_model._rope_wm_applied = None
-        if hasattr(hf_model, "_rope_wm_key_vec"):
-            hf_model._rope_wm_key_vec = None
+        for block in hf_model.transformer.h:
+            attn = block.attn
+            if hasattr(attn, "_rope_wm_enabled"):
+                attn._rope_wm_enabled = False
+            if hasattr(attn, "_rope_wm_applied"):
+                attn._rope_wm_applied = None
+            if hasattr(attn, "_rope_wm_key_vec"):
+                attn._rope_wm_key_vec = None
 
     def add_rope_and_label(self, hfmodel, *,
                            theta=10000,
@@ -693,8 +702,13 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
         super()._bypass_wpe(transformer)
 
         for layer_idx, block in enumerate(transformer.h):
-            block.attn._rope_wm_parent = hfmodel
-            self._new_patch_attention(block.attn, layer_idx, theta, rotary_dim, scale, cache_max_len, n_head, head_dim)
+            # block.attn._rope_wm_parent = hfmodel
+            attn = block.attn
+            attn._rope_wm_enabled = False
+            attn._rope_wm_applied = None
+            attn._rope_wm_key_vec = None
+            self._new_patch_attention(attn, layer_idx, theta, rotary_dim, scale, cache_max_len, n_head, head_dim)
+            
 
         setattr(cfg, "use_rope_watermark", True)
         setattr(cfg, "rope_theta", float(theta))
@@ -789,12 +803,13 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
 
 
                 # 3) watermark
-                parent = getattr(self, "_rope_wm_parent", None)
-                wm_enabled = bool(getattr(parent, "_rope_wm_enabled", False)) if parent is not None else False
+                # parent = getattr(self, "_rope_wm_parent", None)
+                # wm_enabled = bool(getattr(parent, "_rope_wm_enabled", False)) if parent is not None else False
+                wm_enabled = bool(getattr(self, "_rope_wm_enabled", False))
 
                 if wm_enabled:
-                    wm_applied = parent._rope_wm_applied  # [B]
-                    key_vec    = parent._rope_wm_key_vec  # [K]
+                    wm_applied = self._rope_wm_applied  # [B]
+                    key_vec    = self._rope_wm_key_vec  # [K]
                     pos_prime  = build_position_ids_prime_cumulative_from_posbase(pos_base, wm_applied, key_vec)
                 else:
                     pos_prime = pos_base

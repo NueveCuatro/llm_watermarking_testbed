@@ -331,6 +331,7 @@ class RopeWM(BaseWm):
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
         parser.add_argument('--no_spacers', action="store_true", help='this boolean indicates if the spacers are added to the data or not')
+        parser.add_argument('--layer_to_hook', type=int, default=-1, help='this indicates which layers to hook')
         parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
         parser.add_argument('--wm_key_size', type=int, default=256, help="The dimension of the secret key")
         parser.add_argument('--rope_theta', type=float, default=10000.0, help='this is the base in the that angle for the rotary matrix')
@@ -367,7 +368,7 @@ class RopeWM(BaseWm):
 
         #create the hook bank and atach a hook to the module (the hook is stored in hook_bank.hook)
         self.hook_bank = HookBank()
-        self.hook_bank.attach(self.model.hfmodel.transformer.h[-1]) # GPT nomenclature is used. If you change the model, change this line
+        self.hook_bank.attach(self.model.hfmodel.transformer.h[self.opt.layer_to_hook].attn) # GPT nomenclature is used. If you change the model, change this line
         #TODO make this agn to the model
 
         #overwrite the models base funtions
@@ -795,3 +796,192 @@ class RopeWM(BaseWm):
             },
             step=step,
         )
+
+    def _pool_repr(self, x: torch.Tensor, attention_mask: torch.Tensor, mode: str = "mean"):
+        """
+        x: [B,T,d]
+        attention_mask: [B,T] (1 for valid tokens)
+        returns: [B,d]
+        """
+        if attention_mask is None:
+            return x.mean(dim=1)
+
+        m = attention_mask.to(x.dtype).to(x.device)  # [B,T]
+        if mode == "mean":
+            denom = m.sum(dim=1, keepdim=True).clamp(min=1.0)  # [B,1]
+            return (x * m.unsqueeze(-1)).sum(dim=1) / denom
+        elif mode == "first":
+            return x[:, 0, :]
+        else:
+            raise ValueError(f"Unknown pool mode: {mode}")
+
+
+    @torch.no_grad()
+    def diagnostic(
+        self,
+        batch: dict,
+        total_steps: int,
+        layers=None,
+        use_batch_trig_mask: bool = False,
+        pool_mode: str = "mean",
+        log_hists: bool = True,
+    ):
+        """
+        Diagnostic: run 2 forwards (OFF vs ON) and compare hooked attn outputs.
+
+        - Hooks every even layer by default
+        - Logs per-layer metrics to wandb via self.visualizer.run.log
+
+        Assumes you have:
+        - self.rope_adapter.set_rope_wm_context(hfmodel, wm_applied, key_vec)
+        - self.rope_adapter.clear_rope_wm_context(hfmodel)
+        - self.model.hfmodel is the HF model
+        - self.visualizer.run.log exists (wandb run)
+        """
+
+        hfmodel = self.model.hfmodel
+        device = next(hfmodel.parameters()).device
+
+        # Move batch to model device
+        batch = {k: v.to(device) for k, v in batch.items()}
+        attention_mask = batch.get("attention_mask", None)
+
+        # choose layers
+        n_layers = len(hfmodel.transformer.h)
+        if layers is None:
+            layers = list(range(0, n_layers, 2))  # even layers: 0,2,4,...
+
+        # --- Hook collectors: layer -> tensor [B,T,d]
+        cache_off = {}
+        cache_on = {}
+        handles = []
+
+        def make_hook(cache_dict, layer_idx):
+            def _hook(m, i, o):
+                # o is typically (attn_output, attn_weights)
+                # attn_output: [B,T,d]
+                cache_dict[layer_idx] = o[0].detach()
+            return _hook
+
+        # attach hooks for OFF pass (we can reuse same hooks, just switch which dict they write into)
+        # easiest: attach twice? no. We'll attach once, but swap a pointer.
+        active_cache = {"ptr": cache_off}
+
+        def make_shared_hook(layer_idx):
+            def _hook(m, i, o):
+                active_cache["ptr"][layer_idx] = o[0].detach()
+            return _hook
+
+        for l in layers:
+            h = hfmodel.transformer.h[l].attn.register_forward_hook(make_shared_hook(l))
+            handles.append(h)
+
+        # --- Build wm masks
+        B = batch["input_ids"].shape[0]
+
+        if use_batch_trig_mask:
+            wm_on = batch["wm_applied"].to(device).bool()
+            wm_off = torch.zeros_like(wm_on).bool()
+            # For ON pass, if you want "whatever the dataset says is triggered", keep wm_on as is.
+            # If you want "force ON for all", set wm_on = torch.ones(B, device=device, dtype=torch.bool)
+        else:
+            wm_off = torch.zeros(B, device=device, dtype=torch.bool)
+            wm_on  = torch.ones(B, device=device, dtype=torch.bool)
+
+        # key vector
+        key_vec = self.opt.wm_key_displacement
+        if not torch.is_tensor(key_vec):
+            key_vec = torch.tensor(key_vec, device=device)
+        else:
+            key_vec = key_vec.to(device)
+
+        # --- OFF forward
+        if self.opt.no_spacers:
+            self.rope_adapter.clear_rope_wm_context(hfmodel)
+            self.rope_adapter.set_rope_wm_context(hfmodel, wm_off, key_vec)
+
+        active_cache["ptr"] = cache_off
+        _ = hfmodel(
+            input_ids=batch["input_ids"],
+            attention_mask=batch.get("attention_mask", None),
+            labels=batch.get("labels", None),
+            return_dict=True,
+            output_attentions=False,
+        )
+
+        # --- ON forward
+        if self.opt.no_spacers:
+            self.rope_adapter.clear_rope_wm_context(hfmodel)
+            self.rope_adapter.set_rope_wm_context(hfmodel, wm_on, key_vec)
+
+        active_cache["ptr"] = cache_on
+        _ = hfmodel(
+            input_ids=batch["input_ids"],
+            attention_mask=batch.get("attention_mask", None),
+            labels=batch.get("labels", None),
+            return_dict=True,
+            output_attentions=False,
+        )
+
+        # remove hooks
+        for h in handles:
+            h.remove()
+
+        # --- Compute metrics per layer
+        logs = {}
+        cos_all_layers = []
+        rel_all_layers = []
+
+        for l in layers:
+            if l not in cache_off or l not in cache_on:
+                # if a layer didn't run / hook didn't fire, skip
+                continue
+
+            x0 = cache_off[l]  # [B,T,d]
+            x1 = cache_on[l]   # [B,T,d]
+
+            # pooled representations [B,d]
+            p0 = self._pool_repr(x0, attention_mask, mode=pool_mode)
+            p1 = self._pool_repr(x1, attention_mask, mode=pool_mode)
+
+            # cosine similarity per sample
+            cos = F.cosine_similarity(p0, p1, dim=-1)  # [B]
+            cos_mean = cos.mean().item()
+            cos_std = cos.std(unbiased=False).item()
+
+            # relative L2 change per sample
+            diff = (p1 - p0)
+            rel = diff.norm(dim=-1) / (p0.norm(dim=-1) + 1e-8)  # [B]
+            rel_mean = rel.mean().item()
+            rel_std = rel.std(unbiased=False).item()
+
+            logs[f"diag/rope_cos_mean/l{l}"] = cos_mean
+            logs[f"diag/rope_cos_std/l{l}"]  = cos_std
+            logs[f"diag/rope_relL2_mean/l{l}"] = rel_mean
+            logs[f"diag/rope_relL2_std/l{l}"]  = rel_std
+
+            cos_all_layers.append(cos.detach().cpu())
+            rel_all_layers.append(rel.detach().cpu())
+
+        # --- Aggregate across layers (useful single scalars)
+        if len(cos_all_layers) > 0:
+            cos_cat = torch.cat(cos_all_layers, dim=0)  # [num_layers*B]
+            rel_cat = torch.cat(rel_all_layers, dim=0)
+
+            logs["diag/rope_cos_mean/all_layers"] = cos_cat.mean().item()
+            logs["diag/rope_cos_std/all_layers"]  = cos_cat.std(unbiased=False).item()
+            logs["diag/rope_relL2_mean/all_layers"] = rel_cat.mean().item()
+            logs["diag/rope_relL2_std/all_layers"]  = rel_cat.std(unbiased=False).item()
+
+            # Optional histograms
+            if log_hists:
+                try:
+                    import wandb
+                    logs["diag/rope_cos_hist/all_layers"] = wandb.Histogram(cos_cat.numpy())
+                    logs["diag/rope_relL2_hist/all_layers"] = wandb.Histogram(rel_cat.numpy())
+                except Exception:
+                    pass
+
+        # log to wandb
+        self.visualizer.run.log(logs, step=total_steps)
+        return logs
