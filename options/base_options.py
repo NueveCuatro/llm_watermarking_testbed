@@ -49,7 +49,7 @@ class BaseOptions():
         parser.add_argument('--streaming_bool', action='store_true', help='This indicates if the data is streamed into the model during use, or if the data is cached and loaded')
         parser.add_argument('--text_column', type=str, help='This indicates which column of the dataset has the raw data')
         parser.add_argument('--block_size', type=int, help='for causallm dataset mode, this indicates the block size feed to the model')
-        parser.add_argument('--num_freezed_layers', help="specify the number of attention layers you want to freeze in a bottum up fashion. [int, 'all', 'none]")
+        parser.add_argument('--num_freezed_layers', help="specify the number of attention layers you want to freeze in a bottum up fashion. [int, 'all', 'none']")
         parser.add_argument('--freeze_specific_layer_name', type=str, nargs='*', help="specify the layers to freeze by name. The name is passed in a dotted path eg. transformer.h[5] has to be transformer.h.5")
         parser.add_argument('--freeze_embedding', action='store_true', help="freeze the embeddings and the lm_head (tied weights)")
         parser.add_argument('--freeze_all', action='store_true', help='freeze the whole model')

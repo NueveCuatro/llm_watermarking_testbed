@@ -856,12 +856,6 @@ class RopeWM(BaseWm):
 
         - Hooks every even layer by default
         - Logs per-layer metrics to wandb via self.visualizer.run.log
-
-        Assumes you have:
-        - self.rope_adapter.set_rope_wm_context(hfmodel, wm_applied, key_vec)
-        - self.rope_adapter.clear_rope_wm_context(hfmodel)
-        - self.model.hfmodel is the HF model
-        - self.visualizer.run.log exists (wandb run)
         """
 
         hfmodel = self.model.hfmodel

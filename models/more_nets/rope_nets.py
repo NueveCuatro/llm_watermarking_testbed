@@ -863,58 +863,70 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                 )
             
             if getattr(self, "_rope_probe_enabled", False) and (self._rope_probe_store is not None):
-                # q_rot = query_states[..., :rd]   # [B,H,T,rd]
-                # k_rot = key_states[..., :rd]
-                # mean pool over tokens -> [B,H,rd]
-
                 which = getattr(self, "_rope_probe_which", set())
 
-                # Build logits with mask exactly like attention would (causal + provided mask).
-                # We'll do a "diagnostic eager attention" with no dropout.
-                q = query_states
-                k = key_states
-                v = value_states
+                q = query_states  # [B,H,Tq,Dh]
+                k = key_states    # [B,H,Tk,Dh]
 
-                # logits: [B,H,T,Tk]
-                logits = torch.matmul(q, k.transpose(-1, -2)) / (self.head_dim ** 0.5)
+                q_rot = q[..., :rd]
+                k_rot = k[..., :rd]
+                v = value_states  # [B,H,Tk,Dh]
 
-                # apply attention_mask_ if present (HF provides additive mask usually)
-                # attention_mask_ shape may be [B,1,1,Tk] or [B,1,T,Tk]
+                # ---- logits in fp32 for stability
+                logits = torch.matmul(q_rot.float(), k_rot.float().transpose(-1, -2)) / (self.head_dim ** 0.5)  # [B,H,Tq,Tk]
+
+                # ---- additive attention mask (HF usually provides 0 for keep, -inf/-1e4 for mask)
                 if attention_mask_ is not None:
-                    logits = logits + attention_mask_
+                    logits = logits + attention_mask_.float()
 
-                # causal mask if needed
-                # In GPT2, causal is usually handled inside attention interface; here we add it for diagnostics.
-                # Tk = k.shape[-2]
+                # ---- causal mask (safe, works for Tk>=Tq)
                 B_, H_, Tq, Tk = logits.shape
-                # causal mask for current query positions attending to keys
-                # This assumes we're in self-attn and using full prefix keys.
-                causal = torch.ones((Tq, Tk), device=logits.device, dtype=torch.bool).tril(diagonal=Tk - Tq)
-                # above line aligns when Tk>=Tq (common with cache). For no cache Tk==Tq it's standard.
-                logits = logits.masked_fill(~causal.view(1,1,Tq,Tk), float("-inf"))
 
-                attn = torch.softmax(logits, dim=-1)  # [B,H,T,Tk]
-                ctx  = torch.matmul(attn, v)          # [B,H,T,Dh]
+                # Build causal so that query i can attend to keys <= (Tk - Tq + i)
+                # If Tk==Tq => standard lower-triangular
+                # If Tk>Tq (cache) => allows attending to the full prefix + up to current position
+                offset = Tk - Tq
+                i = torch.arange(Tq, device=logits.device).unsqueeze(1)          # [Tq,1]
+                j = torch.arange(Tk, device=logits.device).unsqueeze(0)          # [1,Tk]
+                causal = (j <= (i + offset))                                     # [Tq,Tk], bool
 
-                # ---- store summaries (detach+cpu)
+                # IMPORTANT: use large negative instead of -inf to avoid NaN softmax
+                logits = logits.masked_fill(~causal.view(1, 1, Tq, Tk), -1e4)
+
+                # ---- attn + ctx
+                attn = torch.softmax(logits, dim=-1)
+                attn = torch.nan_to_num(attn, nan=0.0, posinf=0.0, neginf=0.0)   # safety
+                ctx  = torch.matmul(attn, v.float())                              # [B,H,Tq,Dh]
+
+                # ---- store summaries
                 if "qk" in which:
-                    self._rope_probe_store["q_pool"] = q.mean(dim=-2).detach().float().cpu()
-                    self._rope_probe_store["k_pool"] = k.mean(dim=-2).detach().float().cpu()
+                    self._rope_probe_store["q_pool"] = q_rot.mean(dim=-2).detach().float().cpu()  # [B,H,Dh] (or slice rd outside)
+                    self._rope_probe_store["k_pool"] = k_rot.mean(dim=-2).detach().float().cpu()
 
                 if "logits" in which:
-                    self._rope_probe_store["logits_meanabs"] = logits.abs().mean(dim=(-1, -2)).detach().float().cpu()  # [B,H]
-                    self._rope_probe_store["logits_std"]     = logits.std(dim=(-1, -2), unbiased=False).detach().float().cpu()
+                    # finite-safe mean(abs(logits)) over (Tq,Tk)
+                    finite = torch.isfinite(logits)
+                    abs_sum = (logits.abs() * finite).sum(dim=(-1, -2))            # [B,H]
+                    count   = finite.sum(dim=(-1, -2)).clamp(min=1)                # [B,H]
+                    meanabs = abs_sum / count
+
+                    # std over finite values is harder; this is a simple robust approx:
+                    # compute std treating non-finite as 0 but renormalize by count
+                    m = meanabs.unsqueeze(-1).unsqueeze(-1)                         # [B,H,1,1]
+                    var_sum = (((logits - m) * finite) ** 2).sum(dim=(-1, -2))
+                    std = torch.sqrt(var_sum / count.clamp(min=1))
+
+                    self._rope_probe_store["logits_meanabs"] = meanabs.detach().cpu()
+                    self._rope_probe_store["logits_std"]     = std.detach().cpu()
 
                 if "attn" in which:
-                    # entropy per query token: H = -sum p log p
-                    ent = -(attn.clamp_min(1e-9) * attn.clamp_min(1e-9).log()).sum(dim=-1)  # [B,H,T]
-                    self._rope_probe_store["attn_entropy"] = ent.mean(dim=-1).detach().float().cpu()     # [B,H]
-                    self._rope_probe_store["attn_max"]     = attn.max(dim=-1).values.mean(dim=-1).detach().float().cpu()  # [B,H]
+                    ent = -(attn.clamp_min(1e-9) * attn.clamp_min(1e-9).log()).sum(dim=-1)  # [B,H,Tq]
+                    self._rope_probe_store["attn_entropy"] = ent.mean(dim=-1).detach().cpu()  # [B,H]
+                    self._rope_probe_store["attn_max"]     = attn.max(dim=-1).values.mean(dim=-1).detach().cpu()
 
                 if "ctx" in which:
-                    # pooled context per head
-                    self._rope_probe_store["ctx_pool"] = ctx.mean(dim=-2).detach().float().cpu()  # [B,H,Dh]
-                    self._rope_probe_store["ctx_norm"] = ctx.norm(dim=-1).mean(dim=-1).detach().float().cpu()  # [B,H]
+                    self._rope_probe_store["ctx_pool"] = ctx.mean(dim=-2).detach().cpu()     # [B,H,Dh]
+                    self._rope_probe_store["ctx_norm"] = ctx.norm(dim=-1).mean(dim=-1).detach().cpu()  # [B,H]
 
 
             # attention core (HF helpers)
