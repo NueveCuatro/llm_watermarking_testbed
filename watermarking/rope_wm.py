@@ -337,7 +337,9 @@ class RopeWM(BaseWm):
                                                                           "'ctx' : are the contex pooled vector, ie. the weighted value sum"\
                                                                           "'attn_out' : is the output of the attn module (after projection and normalisation)")
         parser.add_argument('--no_spacers', action="store_true", help='this boolean indicates if the spacers are added to the data or not')
-        parser.add_argument('--layer_to_hook', type=int, default=-1, help='this indicates which layers to hook')
+        parser.add_argument('--layer_to_hook', type=int, default=-1, help='this indicates which layers to hook and separate if there is no_spacers bool si set to true')
+        parser.add_argument('--nq', type=int, help="this indicates the number of dimensions keep in the query to compute the separation term (this is to prevent using to much compute)")
+        parser.add_argument('--nk', type=int, help="this indicates the number of dimensions keep in the key to compute the separation term (this is to prevent using to much compute)")
         parser.add_argument('--wm_key_seed', type=int, help='The seed will help generate a random key.')
         parser.add_argument('--wm_key_size', type=int, default=256, help="The dimension of the secret key")
         parser.add_argument('--rope_theta', type=float, default=10000.0, help='this is the base in the that angle for the rotary matrix')
@@ -351,7 +353,8 @@ class RopeWM(BaseWm):
         parser.add_argument('--decoder_beta2', type=float, default=0.999)
         parser.add_argument('--lambda_corr', type=float, default=1., help='This is a regularisation hyperparameter for l_corr')
         parser.add_argument('--lambda_uncor', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
-        parser.add_argument('--lambda_ce', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
+        parser.add_argument('--lambda_ce', type=float, default=1., help='This is a regularisation hyperparameter for l_ce')
+        parser.add_argument('--lambda_sep', type=float, default=1., help='This is a regularisation hyperparameter for l_sep')
 
         return parser
     
@@ -624,6 +627,144 @@ class RopeWM(BaseWm):
             return 1 - torch.abs(torch.nn.CosineSimilarity(-1)(sk, compare_tok)) # sk and out_G shape : [B, key_dim] work on key_dim
         else:
             return torch.abs(torch.nn.CosineSimilarity(-1)(sk, compare_tok)) # sk and out_G shape : [B, key_dim] work on key_dim
+    
+    def _rel_frobenius(self, on: torch.Tensor, off: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+        """
+        This computes the relative frobenuis error according to:
+        relF(A,B) = ||A-B||_F / (||B||_F + espilon)
+        on/off: [B,H,Iq,Ik]
+        returns: [B,H]
+        """
+        num = (on - off).pow(2).sum(dim=(-1, -2)).sqrt()
+        den = off.pow(2).sum(dim=(-1, -2)).sqrt()
+        return num / (den + eps)
+    
+    def _loss_step_sep(self,
+                       batch: dict,
+                       hfmodel,
+                       sk : torch.Tensor,
+                       hook_bank : HookBank,
+                       sep_layer: int,
+                       key_vec,
+                       which,
+                       n_q: int = 16,
+                       n_k: int = 64,
+                       lambda_sep: float = 1.0,
+                       lambda_corr : float = 1.0,
+                       lambda_uncor : float = 1.0,
+                       lambda_ce : float = 1.0,
+                       eps: float = 1e-8,
+                       ) -> Dict[str, torch.Tensor]:
+        """
+        Double forward:
+        - ON pass with wm_applied=ones(B)
+        - OFF pass with wm_applied=zeros(B)
+        Collect q_tok/k_tok from ONE layer and compute logits-separation loss.
+
+        Returns dict with:
+        loss_sep (scalar), relF_mean (scalar)
+        """
+        hook_bank.clear()
+        device_G = self.G.linear1.weight.device
+        device = next(hfmodel.parameters()).device
+        input_ids = batch["input_ids"]#.to(device)
+        attn_mask = batch.get("attention_mask", None)
+        # if attn_mask is not None:
+        #     attn_mask = attn_mask.to(device)
+
+        B, L = input_ids.shape
+
+        # choose token indices (same for ON/OFF)
+        # sample within [0, L-1]
+        # keep simple: random subset each step; you can also fix pattern for stability
+        idx_q = torch.randperm(L, device=device)[: min(n_q, L)]
+        idx_k = torch.randperm(L, device=device)[: min(n_k, L)]
+
+        # convenience
+        attn = hfmodel.transformer.h[sep_layer].attn
+
+        def _run(wm_mask: torch.Tensor):
+            # enable probe on that layer only
+            attn._rope_probe_enabled = True
+            attn._rope_probe_which = set(which)
+            attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
+
+            # set watermark context
+            if self.opt.no_spacers:
+                self.rope_adapter.clear_rope_wm_context(hfmodel)
+                self.rope_adapter.set_rope_wm_context(hfmodel, wm_mask, key_vec)
+
+            out = hfmodel(
+                input_ids=input_ids,
+                attention_mask=attn_mask,
+                labels=batch.get("labels", None),#.to(device) if batch.get("labels", None) is not None else None,
+                return_dict=True,
+                output_attentions=False,
+                use_cache=False,   # strongly recommended for training stability here
+            )
+
+            # retrieve sampled q/k (kept on GPU with grad)
+            q_tok = attn._rope_probe_store["q_tok"]  # [B,H,Iq,rd]
+            k_tok = attn._rope_probe_store["k_tok"]  # [B,H,Ik,rd]
+
+            # IMPORTANT: clear store to avoid holding refs
+            attn._rope_probe_store = None
+            attn._rope_probe_enabled = False
+
+            return out, q_tok, k_tok
+
+        ones = torch.ones(B, device=device, dtype=torch.bool)
+        zeros = torch.zeros(B, device=device, dtype=torch.bool)
+
+        # ON then OFF (either order is fine)
+        out_on, q_on, k_on = _run(ones)
+        out_off, q_off, k_off = _run(zeros)
+
+        in_G_on = hook_bank.cache[0] #this should be the rigth order
+        in_G_off = hook_bank.cache[1]
+
+        out_G_on = self.G(in_G_on.to(device_G))
+        out_G_off = self.G(in_G_off.to(device_G))
+
+        # logits submatrices using only rotary dims stored
+        rd = q_on.shape[-1]
+        scale = rd ** 0.5
+
+        # [B,H,Iq,Ik]
+        L_on  = torch.matmul(q_on,  k_on.transpose(-1, -2)) / scale
+        L_off = torch.matmul(q_off, k_off.transpose(-1, -2)) / scale
+
+        relF = self._rel_frobenius(L_on, L_off, eps=eps)   # [B,H]
+        relF_mean = relF.mean()
+
+        # free big tensors ASAP
+        # (optional) torch.cuda.empty_cache()  # usually not needed each step, slows you down
+        del q_on, k_on, q_off, k_off, L_on, L_off
+
+        # maximize separation => minimize negative
+        loss_sep = -relF_mean #* lambda_sep
+        
+        loss_corr = self._loss_corr(sk, out_G_on, corr=True).mean()
+        loss_uncorr = self._loss_corr(sk, out_G_off, corr=False).mean()
+
+        loss_ce = out_off.loss + out_on.loss
+        device_lce = loss_ce.davice
+
+        loss_total = loss_ce*lambda_ce + loss_corr.to(device_lce)*lambda_corr + loss_uncorr.to(device_lce)*lambda_uncor \
+                    +loss_sep.to(device_lce)*lambda_sep
+
+        return {
+            "loss_total" : loss_total,
+            "loss_ce" : loss_ce,
+            "loss_corr" : loss_corr,
+            "loss_uncor" : loss_uncorr,
+            "loss_sep": loss_sep,
+            # "sep_relF": relF_mean.detach(),
+            # optional: CE difference check
+            # "ce_on": out_on.loss.detach() if hasattr(out_on, "loss") and out_on.loss is not None else torch.tensor(0.0, device=device),
+            # "ce_off": out_off.loss.detach() if hasattr(out_off, "loss") and out_off.loss is not None else torch.tensor(0.0, device=device),
+        }
+
 
     def _make_key(self, key_size : int, key_seed : int) -> torch.Tensor :
         g_key = torch.Generator()
@@ -634,15 +775,32 @@ class RopeWM(BaseWm):
         """
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """
+        if self.opt.no_spacers:
+            self.loss : Dict[str, torch.Tensor] = self._loss_step_sep(batch=self.input,
+                                                                      hfmodel=self.model.hfmodel,
+                                                                      sk=self.sk,
+                                                                      which=self.opt.diagnosis_type,
+                                                                      hook_bank=self.hook_bank,
+                                                                      sep_layer=self.opt.layer_to_hook,
+                                                                      key_vec=self.opt.wm_key_displacement,
+                                                                      n_q=self.opt.nq,
+                                                                      n_k=self.opt.nk,
+                                                                      lambda_ce=getattr(self.opt, "lambda_ce"),
+                                                                      lambda_corr=getattr(self.opt, "lambda_corr"),
+                                                                      lambda_uncor=getattr(self.opt, "lambda_uncor"),
+                                                                      lambda_sep=getattr(self.opt, "lambda_sep"),
+                                                                      eps=1e-8,
+                                                                      )
+        else:
+            self.loss : Dict[str, torch.Tensor] = self._loss_step(sk=self.sk,
+                                                                batch=self.input,
+                                                                hfmodel=self.model.hfmodel,
+                                                                hook_bank=self.hook_bank,
+                                                                lambda_corr=getattr(self.opt, "lambda_corr"),
+                                                                lambda_uncor=getattr(self.opt, "lambda_uncor"),
+                                                                lambda_ce=getattr(self.opt, "lambda_ce"),
+                                                                )
 
-        self.loss : Dict[str, torch.Tensor] = self._loss_step(sk=self.sk,
-                                                              batch=self.input,
-                                                              hfmodel=self.model.hfmodel,
-                                                              hook_bank=self.hook_bank,
-                                                              lambda_corr=getattr(self.opt, "lambda_corr"),
-                                                              lambda_uncor=getattr(self.opt, "lambda_uncor"),
-                                                              lambda_ce=getattr(self.opt, "lambda_ce"),
-                                                              )
         
         self.model.loss = self.loss
         self.loss["loss_total"].backward()
@@ -826,6 +984,9 @@ class RopeWM(BaseWm):
                    total_steps : int,
                    layers=None,
                    **kwargs):
+        """
+        This function is used as the entry point for the diagnoctic funtions
+        """
         
         assert self.opt.diagnos_wm, "Can not use diagnostic funciton without the --diagnos_wm flag"
 
@@ -1227,136 +1388,3 @@ class RopeWM(BaseWm):
 
         self.visualizer.run.log(logs, step=total_steps)
         return logs
-    
-    # @torch.no_grad()
-    # def rope_on_off_qk_diagnostic(
-    #     self,
-    #     batch: dict,
-    #     total_steps: int,
-    #     layers=None,
-    #     pool_mode="mean",      # currently we mean over tokens inside attention
-    #     log_heatmaps=True,
-    # ):
-    #     hfmodel = self.model.hfmodel
-    #     device = next(hfmodel.parameters()).device
-    #     batch = {k: v.to(device) for k, v in batch.items()}
-
-    #     n_layers = len(hfmodel.transformer.h)
-    #     if layers is None:
-    #         layers = list(range(0, n_layers, 2))  # even layers
-
-    #     # key vec
-    #     key_vec = self.opt.wm_key_displacement
-    #     if not torch.is_tensor(key_vec):
-    #         key_vec = torch.tensor(key_vec, device=device)
-    #     else:
-    #         key_vec = key_vec.to(device)
-
-    #     B = batch["input_ids"].shape[0]
-    #     wm_off = torch.zeros(B, device=device, dtype=torch.bool)
-    #     wm_on  = torch.ones(B, device=device, dtype=torch.bool)
-
-    #     def enable_probe():
-    #         for l in layers:
-    #             attn = hfmodel.transformer.h[l].attn
-    #             attn._rope_probe_enabled = True
-    #             attn._rope_probe_store = {}
-
-    #     def grab_probe():
-    #         out = {}
-    #         for l in layers:
-    #             attn = hfmodel.transformer.h[l].attn
-    #             out[l] = attn._rope_probe_store
-    #         return out
-
-    #     # ---- OFF
-    #     enable_probe()
-    #     if self.opt.no_spacers:
-    #         self.rope_adapter.clear_rope_wm_context(hfmodel)
-    #         self.rope_adapter.set_rope_wm_context(hfmodel, wm_off, key_vec)
-
-    #     _ = hfmodel(
-    #         input_ids=batch["input_ids"],
-    #         attention_mask=batch.get("attention_mask", None),
-    #         labels=batch.get("labels", None),
-    #         return_dict=True,
-    #         output_attentions=False,
-    #     )
-    #     probe_off = grab_probe()
-
-    #     # ---- ON
-    #     enable_probe()
-    #     if self.opt.no_spacers:
-    #         self.rope_adapter.clear_rope_wm_context(hfmodel)
-    #         self.rope_adapter.set_rope_wm_context(hfmodel, wm_on, key_vec)
-
-    #     _ = hfmodel(
-    #         input_ids=batch["input_ids"],
-    #         attention_mask=batch.get("attention_mask", None),
-    #         labels=batch.get("labels", None),
-    #         return_dict=True,
-    #         output_attentions=False,
-    #     )
-    #     probe_on = grab_probe()
-
-    #     # ---- Compute metrics
-    #     logs = {}
-
-    #     # store arrays for heatmap: [num_layers, num_heads]
-    #     q_rel_rows, k_rel_rows = [], []
-    #     q_cos_rows, k_cos_rows = [], []
-
-    #     for l in layers:
-    #         q0 = probe_off[l].get("q_pool", None)  # [B,H,rd] on CPU
-    #         k0 = probe_off[l].get("k_pool", None)
-    #         q1 = probe_on[l].get("q_pool", None)
-    #         k1 = probe_on[l].get("k_pool", None)
-    #         if q0 is None or q1 is None or k0 is None or k1 is None:
-    #             continue
-
-    #         # to torch
-    #         q0 = torch.tensor(q0)
-    #         q1 = torch.tensor(q1)
-    #         k0 = torch.tensor(k0)
-    #         k1 = torch.tensor(k1)
-
-    #         # per sample/head relL2: ||Δ|| / ||base||
-    #         q_rel = (q1 - q0).norm(dim=-1) / (q0.norm(dim=-1) + 1e-8)  # [B,H]
-    #         k_rel = (k1 - k0).norm(dim=-1) / (k0.norm(dim=-1) + 1e-8)  # [B,H]
-
-    #         # per sample/head cosine between pooled vectors
-    #         q_cos = F.cosine_similarity(q0, q1, dim=-1)  # [B,H]
-    #         k_cos = F.cosine_similarity(k0, k1, dim=-1)  # [B,H]
-
-    #         # mean over batch -> [H]
-    #         q_rel_h = q_rel.mean(dim=0)
-    #         k_rel_h = k_rel.mean(dim=0)
-    #         q_cos_h = q_cos.mean(dim=0)
-    #         k_cos_h = k_cos.mean(dim=0)
-
-    #         # log layer-wide scalars too
-    #         logs[f"qkprobe/q_rel_mean/l{l}"] = q_rel_h.mean().item()
-    #         logs[f"qkprobe/k_rel_mean/l{l}"] = k_rel_h.mean().item()
-    #         logs[f"qkprobe/q_cos_mean/l{l}"] = q_cos_h.mean().item()
-    #         logs[f"qkprobe/k_cos_mean/l{l}"] = k_cos_h.mean().item()
-
-    #         q_rel_rows.append(q_rel_h)
-    #         k_rel_rows.append(k_rel_h)
-    #         q_cos_rows.append(q_cos_h)
-    #         k_cos_rows.append(k_cos_h)
-
-    #     # heatmaps
-    #     if log_heatmaps and len(q_rel_rows) > 0:
-    #         import wandb
-    #         q_rel_mat = torch.stack(q_rel_rows, dim=0).numpy()  # [L_even, H]
-    #         k_rel_mat = torch.stack(k_rel_rows, dim=0).numpy()
-    #         q_cos_mat = torch.stack(q_cos_rows, dim=0).numpy()
-    #         k_cos_mat = torch.stack(k_cos_rows, dim=0).numpy()
-
-    #         logs["qkprobe/heatmap_q_rel"] = wandb.Image(q_rel_mat)
-    #         logs["qkprobe/heatmap_k_rel"] = wandb.Image(k_rel_mat)
-    #         logs["qkprobe/heatmap_q_cos"] = wandb.Image(q_cos_mat)
-    #         logs["qkprobe/heatmap_k_cos"] = wandb.Image(k_cos_mat)
-
-    #     self.visualizer.run.log(logs, step=total_steps)
-    #     return logs

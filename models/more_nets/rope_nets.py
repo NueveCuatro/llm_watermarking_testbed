@@ -899,11 +899,30 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                 ctx  = torch.matmul(attn, v.float())                              # [B,H,Tq,Dh]
 
                 # ---- store summaries
-                if "qk" in which:
+                if "qk" in which: #diag
                     self._rope_probe_store["q_pool"] = q_rot.mean(dim=-2).detach().float().cpu()  # [B,H,Dh] (or slice rd outside)
                     self._rope_probe_store["k_pool"] = k_rot.mean(dim=-2).detach().float().cpu()
+                print("which", which)
+                if "qk_logits" in which: #This is to train the sep regularization term
+                    # store small sampled token slices only to limit memory
+                    # expects self._rope_probe_store already contains indices
+                    idx_q = self._rope_probe_store["idx_q"]   # LongTensor [Iq] on device
+                    idx_k = self._rope_probe_store["idx_k"]   # LongTensor [Ik] on device
 
-                if "logits" in which:
+                    # optionally restrict to rotary dims only
+                    rd = self._rope_meta["rotary_dim"]
+                    q_sel = query_states[..., :rd]  # [B,H,T,rd]
+                    k_sel = key_states[..., :rd]    # [B,H,T,rd]
+
+                    # gather tokens
+                    q_tok = q_sel.index_select(dim=-2, index=idx_q)  # [B,H,Iq,rd]
+                    k_tok = k_sel.index_select(dim=-2, index=idx_k)  # [B,H,Ik,rd]
+
+                    # keep on GPU for backward (do NOT detach / cpu)
+                    self._rope_probe_store["q_tok"] = q_tok
+                    self._rope_probe_store["k_tok"] = k_tok
+
+                if "logits" in which: #diag
                     # finite-safe mean(abs(logits)) over (Tq,Tk)
                     finite = torch.isfinite(logits)
                     abs_sum = (logits.abs() * finite).sum(dim=(-1, -2))            # [B,H]
@@ -919,12 +938,12 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                     self._rope_probe_store["logits_meanabs"] = meanabs.detach().cpu()
                     self._rope_probe_store["logits_std"]     = std.detach().cpu()
 
-                if "attn" in which:
+                if "attn" in which: #diag
                     ent = -(attn.clamp_min(1e-9) * attn.clamp_min(1e-9).log()).sum(dim=-1)  # [B,H,Tq]
                     self._rope_probe_store["attn_entropy"] = ent.mean(dim=-1).detach().cpu()  # [B,H]
                     self._rope_probe_store["attn_max"]     = attn.max(dim=-1).values.mean(dim=-1).detach().cpu()
 
-                if "ctx" in which:
+                if "ctx" in which: #diag
                     self._rope_probe_store["ctx_pool"] = ctx.mean(dim=-2).detach().cpu()     # [B,H,Dh]
                     self._rope_probe_store["ctx_norm"] = ctx.norm(dim=-1).mean(dim=-1).detach().cpu()  # [B,H]
 

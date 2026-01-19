@@ -9,7 +9,7 @@ if [ $1 == "--train" ]; then
               # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               # --name rope_gpt2_openwebtext_100k_lc_10_lu_10_frac_05_fake_frac_00_Gh_2304_gaussk_on_bl_gm_110x15_hook6attn_no_spacers  \
        python train.py \
-              --name test_cpu_usage  \
+              --name rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_1_lsep_1_nq16_nk32_frac_05_fake_frac_00_Gh_2304_bl_110x15_hook6attn_no_spacers_sep  \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               --tokenizer_name gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
@@ -28,11 +28,14 @@ if [ $1 == "--train" ]; then
               --display_freq 100 \
               --save_model_freq 10000 \
               --wm rope \
+              --no_spacers \
               --layer_to_hook 6 \
+              --nq 16 \
+              --nk 32 \
+              --diagnosis_type qk_logits \
               --frezze_all_exept_layer_name transformer.h.6 \
               --wm_key_displacement 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 \
               --start_with_spacer False \
-              --no_spacers \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
               --decoder_lr 0.005 \
@@ -45,9 +48,10 @@ if [ $1 == "--train" ]; then
               --lambda_corr 10 \
               --lambda_uncor 10 \
               --lambda_ce 1 \
+              --lambda_sep 1 \
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
-              --use_wandb \
+              # --use_wandb \
 
 elif [ $1 == "--diag" ]; then 
               # --name essai_rope_gpt2_openwebtext_100k_lc_10_abs_lu0_abs_theta_10_frac_0.9_Gh_2304  \

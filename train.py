@@ -28,7 +28,6 @@ if __name__=='__main__':
             print(f"\033[91m[ERROR]\033[0m\tWhile loading the watermark method:\n{e}")
         else:
             print("⚠️ \033[93m[WARNING]\033[0m\tNo watermarking method has been found")
-
     model.setup(dataloader) #load the model here, ie after the watermark, in case the model has been changed.
     progress_bar = tqdm(range(model.num_training_steps))
 
@@ -39,7 +38,7 @@ if __name__=='__main__':
                 watermark.diagnostic(batch, total_steps)
                 total_steps+=1
                 progress_bar.update(1)
-            else:
+            else:#standard trainng loop
                 model.set_input(batch)
                 model.optimize_parameters()
                 model.update_lr()
