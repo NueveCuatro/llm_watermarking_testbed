@@ -902,8 +902,8 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                 if "qk" in which: #diag
                     self._rope_probe_store["q_pool"] = q_rot.mean(dim=-2).detach().float().cpu()  # [B,H,Dh] (or slice rd outside)
                     self._rope_probe_store["k_pool"] = k_rot.mean(dim=-2).detach().float().cpu()
-                print("which", which)
-                if "qk_logits" in which: #This is to train the sep regularization term
+                    
+                if "qk_logits_train" in which: #This is to train the sep regularization term
                     # store small sampled token slices only to limit memory
                     # expects self._rope_probe_store already contains indices
                     idx_q = self._rope_probe_store["idx_q"]   # LongTensor [Iq] on device
@@ -915,8 +915,8 @@ class GPT2RopeAdaptaterWithWatermarkLabels(GPT2RopeAdapter):
                     k_sel = key_states[..., :rd]    # [B,H,T,rd]
 
                     # gather tokens
-                    q_tok = q_sel.index_select(dim=-2, index=idx_q)  # [B,H,Iq,rd]
-                    k_tok = k_sel.index_select(dim=-2, index=idx_k)  # [B,H,Ik,rd]
+                    q_tok = q_sel.index_select(dim=-2, index=idx_q.to(q_sel.device))  # [B,H,Iq,rd]
+                    k_tok = k_sel.index_select(dim=-2, index=idx_k.to(k_sel.device))  # [B,H,Ik,rd]
 
                     # keep on GPU for backward (do NOT detach / cpu)
                     self._rope_probe_store["q_tok"] = q_tok

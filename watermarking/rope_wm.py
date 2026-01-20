@@ -293,6 +293,16 @@ class RopeWM(BaseWm):
             self.original_dataset : BaseDataset = modality[1]
             self.visualizer : Visualizer = modality[2]
         
+        #key initialization
+        if getattr(self.opt, "displacement_size", None) != None and getattr(self.opt, "displacement_seed", None) != None:
+            self.wm_key_displacement = self._make_displacement_vector(displacment_size=self.opt.displacement_size,
+                                                                      displacement_seed=self.opt.displacement_seed,
+                                                                      max_displacement=self.opt.max_displacement)
+        else:
+            self.wm_key_displacement = getattr(self.opt, "wm_key_displacement", None)
+        assert self.wm_key_displacement != None, "Please pass a displacement key or a displacement, seed, size and max value"
+
+        
         #The watermarking decoder
         if self.opt.isTrain:
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
@@ -329,7 +339,10 @@ class RopeWM(BaseWm):
         parser.add_argument('--trig_sample_frac_fake', type=float, default=0, help='this controls the proprtion of fake triggered smaples in the dataset')
         parser.add_argument('--start_with_spacer', type=bool, default=False, help='this bool indicates if the sequences strat with a spacer or with text')
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
-                                                                   'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]')
+                                                                   'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]. If you dont pass a vector, you can generate one using a seed, size and max value')
+        parser.add_argument("--displacement_size", type=int, default=None, help="this controles the size of the displacement vector for generation")
+        parser.add_argument("--displacement_seed", type=int, default=None, help="this controles the seed of the displacement vector for generation")
+        parser.add_argument("--max_displacement", type=int, default=None, help="this controles the max value of the displacement vector for generation")
         parser.add_argument('--diagnosis_type', type=str, nargs='*', help="this indicates which type of diagnosis to run. choose flag in {'attn_out', 'qk', 'logits', 'attn', 'ctx'}"\
                                                                           "'qk' : are the query and key pooled vectors allong the token dimension."\
                                                                           "'logits' : are the meaned abs logits form the qk^t/sqrt(dh) pre softmax attnetion."\
@@ -430,7 +443,7 @@ class RopeWM(BaseWm):
         """
         This function hase been built to modify a hf dataset, by adding spacers sampled from a mini alphabet. It adds the spacers according to a secret_vector_key. 
         """
-        key_vec = self.opt.wm_key_displacement
+        key_vec = self.wm_key_displacement
         assert isinstance(key_vec, list), TypeError("The displacement key vector has not been given in the right format")
 
         N = len(self.original_dataset)
@@ -582,7 +595,7 @@ class RopeWM(BaseWm):
         # untrig_mask = (~trig_mask.bool()).int() # [batch]
         # trig_mask  = (trig_mask.unsqueeze(1)*attention_mask).to(device_G) # [B, L]
         # untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).to(device_G)
-        key_vect = self.opt.wm_key_displacement
+        key_vect = self.wm_key_displacement
         sk = sk.to(device_G)
 
         if self.opt.no_spacers:
@@ -744,11 +757,12 @@ class RopeWM(BaseWm):
         # maximize separation => minimize negative
         loss_sep = -relF_mean #* lambda_sep
         
-        loss_corr = self._loss_corr(sk, out_G_on, corr=True).mean()
-        loss_uncorr = self._loss_corr(sk, out_G_off, corr=False).mean()
+        loss_corr = self._loss_corr(sk.to(device_G), out_G_on, corr=True).mean()
+        loss_uncorr = self._loss_corr(sk.to(device_G), out_G_off, corr=False).mean()
+        loss_G = loss_corr*lambda_corr + loss_uncorr*lambda_uncor
 
         loss_ce = out_off.loss + out_on.loss
-        device_lce = loss_ce.davice
+        device_lce = loss_ce.device
 
         loss_total = loss_ce*lambda_ce + loss_corr.to(device_lce)*lambda_corr + loss_uncorr.to(device_lce)*lambda_uncor \
                     +loss_sep.to(device_lce)*lambda_sep
@@ -756,6 +770,7 @@ class RopeWM(BaseWm):
         return {
             "loss_total" : loss_total,
             "loss_ce" : loss_ce,
+            "loss_G" : loss_G,
             "loss_corr" : loss_corr,
             "loss_uncor" : loss_uncorr,
             "loss_sep": loss_sep,
@@ -771,6 +786,14 @@ class RopeWM(BaseWm):
         g_key.manual_seed(key_seed)
         return torch.randn(key_size, generator=g_key)
 
+    def _make_displacement_vector(self,
+                                  displacment_size : int,
+                                  displacement_seed : int,
+                                  max_displacement : int) -> torch.Tensor:
+        g_displacment = torch.Generator()
+        g_displacment.manual_seed(displacement_seed)
+        return torch.randint(1,max_displacement, (displacment_size,), generator=g_displacment)
+
     def new_optimize_parameters(self) -> None:
         """
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
@@ -782,7 +805,7 @@ class RopeWM(BaseWm):
                                                                       which=self.opt.diagnosis_type,
                                                                       hook_bank=self.hook_bank,
                                                                       sep_layer=self.opt.layer_to_hook,
-                                                                      key_vec=self.opt.wm_key_displacement,
+                                                                      key_vec=self.wm_key_displacement,
                                                                       n_q=self.opt.nq,
                                                                       n_k=self.opt.nk,
                                                                       lambda_ce=getattr(self.opt, "lambda_ce"),
@@ -1069,7 +1092,7 @@ class RopeWM(BaseWm):
             wm_on  = torch.ones(B, device=device, dtype=torch.bool)
 
         # key vector
-        key_vec = self.opt.wm_key_displacement
+        key_vec = self.wm_key_displacement
         if not torch.is_tensor(key_vec):
             key_vec = torch.tensor(key_vec, device=device)
         else:
@@ -1203,7 +1226,7 @@ class RopeWM(BaseWm):
             layers = list(range(0, n_layers, 2))  # even layers
 
         # key vector
-        key_vec = self.opt.wm_key_displacement
+        key_vec = self.wm_key_displacement
         if not torch.is_tensor(key_vec):
             key_vec = torch.tensor(key_vec, device=device)
         else:

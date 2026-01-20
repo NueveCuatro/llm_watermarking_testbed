@@ -32,7 +32,7 @@ if [ $1 == "--train" ]; then
               --layer_to_hook 6 \
               --nq 16 \
               --nk 32 \
-              --diagnosis_type qk_logits \
+              --diagnosis_type qk_logits_train \
               --frezze_all_exept_layer_name transformer.h.6 \
               --wm_key_displacement 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 \
               --start_with_spacer False \
@@ -51,7 +51,7 @@ if [ $1 == "--train" ]; then
               --lambda_sep 1 \
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
-              # --use_wandb \
+              --use_wandb \
 
 elif [ $1 == "--diag" ]; then 
               # --name essai_rope_gpt2_openwebtext_100k_lc_10_abs_lu0_abs_theta_10_frac_0.9_Gh_2304  \
@@ -59,8 +59,8 @@ elif [ $1 == "--diag" ]; then
               # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
               # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_qk_logits_attn_ctx_110x15_diag \
-              --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
+              --name rope_gpt2_openwebtext_100k_qk_logits_attn_ctx_randdisp_size45_seed83_max15_1srtrain_diag \
+              --model_name_or_path /media/mohamed/ssdnod/checkpoints/rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_1_lsep_1_nq16_nk32_frac_05_fake_frac_00_Gh_2304_bl_110x15_hook6attn_no_spacers_sep/iter_40000_model_gpt2 \
               --tokenizer_name gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --text_column text \
@@ -78,8 +78,10 @@ elif [ $1 == "--diag" ]; then
               --display_freq 100 \
               --save_model_freq 10000 \
               --wm rope \
-              --wm_key_displacement 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 \
               --start_with_spacer False \
+              --displacement_size 45 \
+              --displacement_seed 83 \
+              --max_displacement 15 \
               --no_spacers \
               --diagnos_wm \
               --diagnosis_type qk logits attn ctx \
@@ -98,6 +100,7 @@ elif [ $1 == "--diag" ]; then
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
               --use_wandb \
+              # --wm_key_displacement 3 8 6 7 2 8 6 5 3 9 8 2 9 4 6 3 7 8 2 9 4 3 4 5 8 10 8 13 7 6 2 9 \
 
 elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \
