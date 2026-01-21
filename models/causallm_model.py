@@ -14,11 +14,10 @@ class CausalLMModel(BaseModel):
             if baseline_bool: #load a baseline model to compare the watermarking techniques
                 self._load_hfmodel_from_local(baseline_bool=True)
             else:    
-                self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_pretrained(
-                                                                                    opt.model_name_or_path,
-                                                                                    device_map=opt.device_map,
-                                                                                    torch_dtype=self.model_dtype(opt.torch_dtype)
-                                                                                )
+                self.hfmodel : PreTrainedModel = AutoModelForCausalLM.from_pretrained(opt.model_name_or_path,
+                                                                                      device_map=opt.device_map,
+                                                                                      torch_dtype=self.model_dtype(opt.torch_dtype)
+                                                                                      )
 
             self.hfmodel.config.use_cache = self.opt.use_dynamic_cache # see if this is true or not when using CLI
 

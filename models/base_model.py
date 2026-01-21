@@ -110,13 +110,13 @@ class BaseModel(ABC):
     def update_lr(self):
         """Update the lr by performing a scheduler.step()"""
         for scheduler, optimizer in zip(self.schedulers, self.optimizer):
-            old_lr = optimizer.param_groups[0]["lr"]
+            # old_lr = optimizer.param_groups[0]["lr"]
             scheduler.step()
-            current_lr = optimizer.param_groups[0]["lr"]
+            # current_lr = optimizer.param_groups[0]["lr"]
 
             # print(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
-            if f"{old_lr:.7f}"!=f"{current_lr:.7}":
-                tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
+            # if f"{old_lr:.7f}"!=f"{current_lr:.7}":
+            #     tqdm.write(f"learning rate {old_lr:.7f} -> {current_lr:.7f}")
     
     def model_dtype(self, int_dtype):
         if int_dtype == 16:

@@ -46,6 +46,8 @@ if __name__=='__main__':
 
                 total_steps += 1
                 if total_steps % opt.display_freq == 0:
+                    if hasattr(model, "print_losses"):
+                        model.print_losses(model.loss, total_steps)
                     if opt.use_wandb:  
                         visualizer.plot_current_loss(model.loss, total_steps)
                 

@@ -349,6 +349,7 @@ class RopeWM(BaseWm):
                                                                           "'attn' : represents the postsoftmax attention, the result is either the attention entropy (how diffused or peaked is the attention, or the max attn)"\
                                                                           "'ctx' : are the contex pooled vector, ie. the weighted value sum"\
                                                                           "'attn_out' : is the output of the attn module (after projection and normalisation)")
+        parser.add_argument("--separation_regim", type=str, help="this indicates which regim to use. Either a simple 'sep_qk', or 'tpl' for the more advance technique")
         parser.add_argument('--no_spacers', action="store_true", help='this boolean indicates if the spacers are added to the data or not')
         parser.add_argument('--layer_to_hook', type=int, default=-1, help='this indicates which layers to hook and separate if there is no_spacers bool si set to true')
         parser.add_argument('--nq', type=int, help="this indicates the number of dimensions keep in the query to compute the separation term (this is to prevent using to much compute)")
@@ -368,6 +369,7 @@ class RopeWM(BaseWm):
         parser.add_argument('--lambda_uncor', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
         parser.add_argument('--lambda_ce', type=float, default=1., help='This is a regularisation hyperparameter for l_ce')
         parser.add_argument('--lambda_sep', type=float, default=1., help='This is a regularisation hyperparameter for l_sep')
+        parser.add_argument('--lambda_tpl', type=float, default=1.0, help='This is a regularisation hyperparameter for l_tpl')
 
         return parser
     
@@ -385,7 +387,7 @@ class RopeWM(BaseWm):
         #modify GptAttention's forward pass to add rotary positional embedings
         self._modify_model(self.model.hfmodel)
         # print("\033[93!!!!!!!!!!!!!!!!!!!!!!!!!model not modifyed!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        self.model.optimizer = [self.model.create_optimizer()]
+        self.model.optimizer = [self.model.create_optimizer()] if any(p.requires_grad for p in self.model.hfmodel.parameters()) else []
         self.model.optimizer.append(self.optimizer_G)
 
         #create the hook bank and atach a hook to the module (the hook is stored in hook_bank.hook)
@@ -396,6 +398,7 @@ class RopeWM(BaseWm):
         #overwrite the models base funtions
         self.model.set_input = self.new_set_input
         self.model.optimize_parameters = self.new_optimize_parameters
+        self.model.print_losses = self.new_print_losses
         
         #take care of the saving mechanism (to save G)
         self.orginal_save_hfmodel = self.model.save_hfmodel
@@ -631,8 +634,8 @@ class RopeWM(BaseWm):
             "loss_uncor" : l_uncor,
         }
 
-    def _loss_corr(self, sk : torch.Tensor, out_G : torch.Tensor, corr=True) -> torch.Tensor:
-        compare_tok = out_G[:,0,:] # [B, L, d] -> [B, d] Compare to the key with the first token.
+    def _loss_corr(self, sk : torch.Tensor, out_G : torch.Tensor, corr=True, mean=False) -> torch.Tensor:
+        compare_tok = out_G.mean(-2) if mean else out_G[:,0,:] # [B, L, d] -> [B, d] Compare to the key with the mean or the first token.
         if sk.dim() == 1:
             sk = sk.unsqueeze(0) #[1, key_dim]
         assert sk.dim() == compare_tok.dim(), RuntimeError(f'Number of dim mismatch, sk.dim() : {sk.dim()} != G output.dim() : {compare_tok.dim()}')
@@ -733,39 +736,45 @@ class RopeWM(BaseWm):
         out_on, q_on, k_on = _run(ones)
         out_off, q_off, k_off = _run(zeros)
 
-        in_G_on = hook_bank.cache[0] #this should be the rigth order
-        in_G_off = hook_bank.cache[1]
+        B, H, indxes, rd = k_on.shape
+        k_on_view = k_on.view(B, indxes, -1) #[B, Ik, H*dh] here dh is rd and Ik is a subsample of L
+        k_off_view = k_off.view(B, indxes, -1)
+        # in_G_on = hook_bank.cache[0] #this should be the rigth order
+        # in_G_off = hook_bank.cache[1]
 
-        out_G_on = self.G(in_G_on.to(device_G))
-        out_G_off = self.G(in_G_off.to(device_G))
+        # out_G_on = self.G(in_G_on.to(device_G))
+        # out_G_off = self.G(in_G_off.to(device_G))
+        out_G_on = self.G(k_on_view.to(device_G))
+        out_G_off = self.G(k_off_view.to(device_G))
 
-        # logits submatrices using only rotary dims stored
-        rd = q_on.shape[-1]
-        scale = rd ** 0.5
+        # # logits submatrices using only rotary dims stored
+        # rd = q_on.shape[-1]
+        # scale = rd ** 0.5
 
-        # [B,H,Iq,Ik]
-        L_on  = torch.matmul(q_on,  k_on.transpose(-1, -2)) / scale
-        L_off = torch.matmul(q_off, k_off.transpose(-1, -2)) / scale
+        # # [B,H,Iq,Ik]
+        # L_on  = torch.matmul(q_on,  k_on.transpose(-1, -2)) / scale
+        # L_off = torch.matmul(q_off, k_off.transpose(-1, -2)) / scale
 
-        relF = self._rel_frobenius(L_on, L_off, eps=eps)   # [B,H]
-        relF_mean = relF.mean()
+        # relF = self._rel_frobenius(L_on, L_off, eps=eps)   # [B,H]
+        # relF_mean = relF.mean()
 
         # free big tensors ASAP
         # (optional) torch.cuda.empty_cache()  # usually not needed each step, slows you down
-        del q_on, k_on, q_off, k_off, L_on, L_off
+        del q_on, k_on, q_off, k_off, #L_on, L_off, in_G_on, in_G_off
 
         # maximize separation => minimize negative
-        loss_sep = -relF_mean #* lambda_sep
+        # loss_sep = -relF_mean #* lambda_sep
         
-        loss_corr = self._loss_corr(sk.to(device_G), out_G_on, corr=True).mean()
-        loss_uncorr = self._loss_corr(sk.to(device_G), out_G_off, corr=False).mean()
+        loss_corr = self._loss_corr(sk.to(device_G), out_G_on, corr=True, mean=True).mean()
+        loss_uncorr = self._loss_corr(sk.to(device_G), out_G_off, corr=False, mean=True).mean()
         loss_G = loss_corr*lambda_corr + loss_uncorr*lambda_uncor
 
         loss_ce = out_off.loss + out_on.loss
         device_lce = loss_ce.device
 
-        loss_total = loss_ce*lambda_ce + loss_corr.to(device_lce)*lambda_corr + loss_uncorr.to(device_lce)*lambda_uncor \
-                    +loss_sep.to(device_lce)*lambda_sep
+        loss_total = loss_ce*lambda_ce + loss_G.to(device_lce) \
+                    #+loss_sep.to(device_lce)*lambda_sep
+
 
         return {
             "loss_total" : loss_total,
@@ -773,13 +782,183 @@ class RopeWM(BaseWm):
             "loss_G" : loss_G,
             "loss_corr" : loss_corr,
             "loss_uncor" : loss_uncorr,
-            "loss_sep": loss_sep,
+            # "loss_sep": loss_sep,
             # "sep_relF": relF_mean.detach(),
             # optional: CE difference check
             # "ce_on": out_on.loss.detach() if hasattr(out_on, "loss") and out_on.loss is not None else torch.tensor(0.0, device=device),
             # "ce_off": out_off.loss.detach() if hasattr(out_off, "loss") and out_off.loss is not None else torch.tensor(0.0, device=device),
         }
 
+    def _cosine_align(self, a: torch.Tensor, b: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+        """
+        a,b: [..., Iq, Ik]
+        returns: [...] cosine similarity over last two dims
+        """
+        a_flat = a.flatten(-2)
+        b_flat = b.flatten(-2)
+        a_norm = a_flat / (a_flat.norm(dim=-1, keepdim=True) + eps)
+        b_norm = b_flat / (b_flat.norm(dim=-1, keepdim=True) + eps)
+        return (a_norm * b_norm).sum(dim=-1)
+
+    def segment_code_from_key(self, key_vec: torch.Tensor) -> torch.Tensor:
+        key_vec = key_vec.long()
+        device = key_vec.device
+        K = key_vec.numel()
+        x = (key_vec * 1315423911) ^ (key_vec.roll(1) * 2654435761)
+        seed = (x.sum() ^ (x.prod() if K > 1 else x.sum())).to(torch.int64)
+        a = torch.tensor(6364136223846793005, device=device, dtype=torch.int64)
+        c = torch.tensor(1442695040888963407, device=device, dtype=torch.int64)
+        mask = torch.tensor((1 << 63) - 1, device=device, dtype=torch.int64)
+        state = seed & mask
+        bits = []
+        for _ in range(K):
+            state = (a * state + c) & mask
+            bits.append(state & 1)
+        bits = torch.stack(bits).to(torch.float32)
+        return bits * 2.0 - 1.0  # {-1,+1}
+
+    def _loss_step_tpl_logits(self,
+                              batch: dict, 
+                              hfmodel,
+                              sk,
+                              sep_layer: int,
+                              key_vec: torch.Tensor,
+                              which,
+                              hook_bank,
+                              lambda_tpl: float,
+                              lambda_ce : float,
+                              lambda_uncor : float,
+                              lambda_corr : float,
+                              n_q: int = 16,
+                              n_k: int = 64,
+                              mode: str = "cosine",   # "cosine" or "hinge"
+                              hinge_margin: float = 0.0,
+                              eps: float = 1e-8,
+                              ) -> Dict[str, torch.Tensor]:
+        """
+        Enforce a keyed template pattern in Δlogits = logits_on - logits_off
+        using sampled token pairs, for ONE layer.
+
+        Returns loss + diagnostics.
+        """
+        hook_bank.clear()
+        device = next(hfmodel.parameters()).device
+        device_G = self.G.linear1.weight.device
+        input_ids = batch["input_ids"]
+        attention_mask = batch.get("attention_mask", None)
+
+        B, T = input_ids.shape
+        key_vec = key_vec.to(device).long()
+        Kseg = key_vec.numel()
+
+        # sample token indices (shared across ON/OFF)
+        Iq = min(n_q, T)
+        Ik = min(n_k, T)
+        idx_q = torch.randperm(T, device=device)[:Iq]
+        idx_k = torch.randperm(T, device=device)[:Ik]
+
+        # prepare template S on these indices (no batch/head yet)
+        # seg_id(idx) = (idx*K)//T
+        seg_q = (idx_q * Kseg) // T          # [Iq]
+        seg_k = (idx_k * Kseg) // T          # [Ik]
+        code = self.segment_code_from_key(key_vec) # [Kseg] in {-1,+1}
+        cq = code[seg_q]                      # [Iq]
+        ck = code[seg_k]                      # [Ik]
+        S = cq[:, None] * ck[None, :]         # [Iq,Ik] in {-1,+1}
+        # broadcast to [B,H,Iq,Ik] later
+
+        attn = hfmodel.transformer.h[sep_layer].attn
+
+        def _run(wm_on: bool):
+            # enable q/k token probe
+            attn._rope_probe_enabled = True
+            attn._rope_probe_which = set(which)
+            attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
+
+            wm_applied = torch.full((B,), 1 if wm_on else 0, device=device, dtype=torch.bool)
+
+            if self.opt.no_spacers:
+                self.rope_adapter.clear_rope_wm_context(hfmodel)
+                self.rope_adapter.set_rope_wm_context(hfmodel, wm_applied, key_vec)
+
+            out = hfmodel(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=batch.get("labels", None).to(device) if batch.get("labels", None) is not None else None,
+                return_dict=True,
+                output_attentions=False,
+                use_cache=False,
+            )
+
+            q_tok = attn._rope_probe_store["q_tok"]  # [B,H,Iq,rd]
+            k_tok = attn._rope_probe_store["k_tok"]  # [B,H,Ik,rd]
+            rd = q_tok.shape[-1]
+
+            # clear probe to free refs
+            attn._rope_probe_store = None
+            attn._rope_probe_enabled = False
+            attn._rope_probe_which = set()
+
+            return out, q_tok, k_tok, rd
+
+        out_on, q_on, k_on, rd = _run(True)
+        out_off, q_off, k_off, _ = _run(False)
+
+        in_G_on = hook_bank.cache[0] #this should be the rigth order
+        in_G_off = hook_bank.cache[1]
+
+        out_G_on = self.G(in_G_on.to(device_G))
+        out_G_off = self.G(in_G_off.to(device_G))
+
+        scale = (rd ** 0.5)
+
+        # logits submatrix: [B,H,Iq,Ik]
+        L_on  = torch.matmul(q_on,  k_on.transpose(-1, -2)) / scale
+        L_off = torch.matmul(q_off, k_off.transpose(-1, -2)) / scale
+        dL = L_on - L_off
+
+        # template broadcast: [1,1,Iq,Ik] -> [B,H,Iq,Ik]
+        S_bh = S.to(dL.device).view(1, 1, Iq, Ik).expand(dL.shape[0], dL.shape[1], Iq, Ik)
+
+        if mode == "cosine":
+            cos = self._cosine_align(dL, S_bh, eps=eps)   # [B,H]
+            loss_tpl = -cos.mean()
+            diag_score = cos.mean().detach()
+        elif mode == "hinge":
+            # Encourage S * dL to be positive (optionally above margin)
+            # loss = E[max(0, margin - S*dL)]
+            margin = hinge_margin
+            loss_tpl = F.relu(margin - (S_bh * dL)).mean()
+            diag_score = (S_bh * dL).mean().detach()
+        else:
+            raise ValueError(f"Unknown mode={mode}")
+        
+        loss_corr = self._loss_corr(sk.to(device_G), out_G_on, corr=True, mean=True).mean()
+        loss_uncorr = self._loss_corr(sk.to(device_G), out_G_off, corr=False, mean=True).mean()
+        loss_G = loss_corr*lambda_corr + loss_uncorr*lambda_uncor
+
+        loss_ce = out_off.loss + out_on.loss
+
+        loss_total = loss_ce.to(device_G)*lambda_ce + loss_G + loss_tpl.to(device_G)*lambda_tpl
+
+        # diagnostics
+        with torch.no_grad():
+            relF = (dL.pow(2).sum(dim=(-1, -2)).sqrt() / (L_off.pow(2).sum(dim=(-1, -2)).sqrt() + eps)).mean()
+
+        # free big tensors
+        del q_on, k_on, q_off, k_off, L_on, L_off, dL
+
+        return {
+            "loss_total" : loss_total,
+            "loss_G" : loss_G,
+            "loss_uncor" : loss_uncorr,
+            "loss_corr" : loss_corr,
+            "loss_tpl": loss_tpl,
+            "metric_tpl/tpl_score": diag_score,   # cosine mean or mean(S*dL)
+            "metric_tpl/tpl_relF": relF.detach(),
+            # "ce_on": out_on.loss.detach() if getattr(out_on, "loss", None) is not None else torch.tensor(0.0, device=device),
+            # "ce_off": out_off.loss.detach() if getattr(out_off, "loss", None) is not None else torch.tensor(0.0, device=device),
+        }
 
     def _make_key(self, key_size : int, key_seed : int) -> torch.Tensor :
         g_key = torch.Generator()
@@ -799,21 +978,40 @@ class RopeWM(BaseWm):
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """
         if self.opt.no_spacers:
-            self.loss : Dict[str, torch.Tensor] = self._loss_step_sep(batch=self.input,
-                                                                      hfmodel=self.model.hfmodel,
-                                                                      sk=self.sk,
-                                                                      which=self.opt.diagnosis_type,
-                                                                      hook_bank=self.hook_bank,
-                                                                      sep_layer=self.opt.layer_to_hook,
-                                                                      key_vec=self.wm_key_displacement,
-                                                                      n_q=self.opt.nq,
-                                                                      n_k=self.opt.nk,
-                                                                      lambda_ce=getattr(self.opt, "lambda_ce"),
-                                                                      lambda_corr=getattr(self.opt, "lambda_corr"),
-                                                                      lambda_uncor=getattr(self.opt, "lambda_uncor"),
-                                                                      lambda_sep=getattr(self.opt, "lambda_sep"),
-                                                                      eps=1e-8,
-                                                                      )
+            if getattr(self.opt,"separation_regim", None) == "sep_qk":
+                self.loss : Dict[str, torch.Tensor] = self._loss_step_sep(batch=self.input,
+                                                                          hfmodel=self.model.hfmodel,
+                                                                          sk=self.sk,
+                                                                          which=self.opt.diagnosis_type,
+                                                                          hook_bank=self.hook_bank,
+                                                                          sep_layer=self.opt.layer_to_hook,
+                                                                          key_vec=self.wm_key_displacement,
+                                                                          n_q=self.opt.nq,
+                                                                          n_k=self.opt.nk,
+                                                                          lambda_ce=getattr(self.opt, "lambda_ce"),
+                                                                          lambda_corr=getattr(self.opt, "lambda_corr"),
+                                                                          lambda_uncor=getattr(self.opt, "lambda_uncor"),
+                                                                          lambda_sep=getattr(self.opt, "lambda_sep"),
+                                                                          eps=1e-8,
+                                                                          )
+            elif getattr(self.opt,"separation_regim", None) == "tpl":
+                self.loss : Dict[str, torch.Tensor] = self._loss_step_tpl_logits(batch=self.input,
+                                                                                 hfmodel=self.model.hfmodel,
+                                                                                 sk=self.sk,
+                                                                                 sep_layer=self.opt.layer_to_hook,
+                                                                                 key_vec=self.wm_key_displacement,
+                                                                                 which=self.opt.diagnosis_type,
+                                                                                 hook_bank=self.hook_bank,
+                                                                                 lambda_tpl=getattr(self.opt, "lambda_tpl"),
+                                                                                 lambda_ce=getattr(self.opt, "lambda_ce"),
+                                                                                 lambda_corr=getattr(self.opt, "lambda_corr"),
+                                                                                 lambda_uncor=getattr(self.opt, "lambda_uncor"),
+                                                                                 n_q=self.opt.nq,
+                                                                                 n_k=self.opt.nk,
+                                                                                 mode="cosine",
+                                                                                 hinge_margin=0.0,
+                                                                                 eps=1e-8
+                                                                                 )
         else:
             self.loss : Dict[str, torch.Tensor] = self._loss_step(sk=self.sk,
                                                                 batch=self.input,
@@ -836,7 +1034,14 @@ class RopeWM(BaseWm):
         """
         This function overides the visualizer.plot_current_losses(). And is ment to plot all the new losses on wanbd
         """
+        losses = {k:v.item() for k,v in losses.items()}
         self.visualizer.run.log({k: v.item() if torch.is_tensor(v) else float(v) for k, v in losses.items()}, step=total_steps)
+    
+    def new_print_losses(self, losses : Dict[str, torch.Tensor], total_steps : int) -> None:
+        """
+        this function displays losses and metric in the model.loss
+        """
+        tqdm.write(f"\033[97m[METRIC]\033[0m- Step - {total_steps}:\t{losses}")
     
     def new_save_hfmodel_with_decoder(self, total_steps, last_iter=False):
         """
