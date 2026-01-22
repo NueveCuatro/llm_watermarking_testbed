@@ -423,7 +423,7 @@ class RopeWM(BaseWm):
 
         #set the hook bank for the test
         self.hook_bank = HookBank()
-        self.hook_bank.attach(self.model.saved_hfmodel.transformer.h[-1])
+        self.hook_bank.attach(self.model.saved_hfmodel.transformer.h[self.opt.layer_to_hook].attn)
 
         #overwrite the orignial set_input
         self.model.set_input = self.new_set_input
@@ -736,34 +736,34 @@ class RopeWM(BaseWm):
         out_on, q_on, k_on = _run(ones)
         out_off, q_off, k_off = _run(zeros)
 
-        B, H, indxes, rd = k_on.shape
-        k_on_view = k_on.view(B, indxes, -1) #[B, Ik, H*dh] here dh is rd and Ik is a subsample of L
-        k_off_view = k_off.view(B, indxes, -1)
-        # in_G_on = hook_bank.cache[0] #this should be the rigth order
-        # in_G_off = hook_bank.cache[1]
+        # B, H, indxes, rd = k_on.shape
+        # k_on_view = k_on.view(B, indxes, -1) #[B, Ik, H*dh] here dh is rd and Ik is a subsample of L
+        # k_off_view = k_off.view(B, indxes, -1)
+        in_G_on = hook_bank.cache[0] #this should be the rigth order
+        in_G_off = hook_bank.cache[1]
 
-        # out_G_on = self.G(in_G_on.to(device_G))
-        # out_G_off = self.G(in_G_off.to(device_G))
-        out_G_on = self.G(k_on_view.to(device_G))
-        out_G_off = self.G(k_off_view.to(device_G))
+        out_G_on = self.G(in_G_on.to(device_G))
+        out_G_off = self.G(in_G_off.to(device_G))
+        # out_G_on = self.G(k_on_view.to(device_G))
+        # out_G_off = self.G(k_off_view.to(device_G))
 
-        # # logits submatrices using only rotary dims stored
-        # rd = q_on.shape[-1]
-        # scale = rd ** 0.5
+        # logits submatrices using only rotary dims stored
+        rd = q_on.shape[-1]
+        scale = rd ** 0.5
 
-        # # [B,H,Iq,Ik]
-        # L_on  = torch.matmul(q_on,  k_on.transpose(-1, -2)) / scale
-        # L_off = torch.matmul(q_off, k_off.transpose(-1, -2)) / scale
+        # [B,H,Iq,Ik]
+        L_on  = torch.matmul(q_on,  k_on.transpose(-1, -2)) / scale
+        L_off = torch.matmul(q_off, k_off.transpose(-1, -2)) / scale
 
-        # relF = self._rel_frobenius(L_on, L_off, eps=eps)   # [B,H]
-        # relF_mean = relF.mean()
+        relF = self._rel_frobenius(L_on, L_off, eps=eps)   # [B,H]
+        relF_mean = relF.mean()
 
         # free big tensors ASAP
         # (optional) torch.cuda.empty_cache()  # usually not needed each step, slows you down
         del q_on, k_on, q_off, k_off, #L_on, L_off, in_G_on, in_G_off
 
         # maximize separation => minimize negative
-        # loss_sep = -relF_mean #* lambda_sep
+        loss_sep = -relF_mean #* lambda_sep
         
         loss_corr = self._loss_corr(sk.to(device_G), out_G_on, corr=True, mean=True).mean()
         loss_uncorr = self._loss_corr(sk.to(device_G), out_G_off, corr=False, mean=True).mean()
@@ -773,7 +773,7 @@ class RopeWM(BaseWm):
         device_lce = loss_ce.device
 
         loss_total = loss_ce*lambda_ce + loss_G.to(device_lce) \
-                    #+loss_sep.to(device_lce)*lambda_sep
+                    +loss_sep.to(device_lce)*lambda_sep
 
 
         return {
@@ -951,6 +951,7 @@ class RopeWM(BaseWm):
         return {
             "loss_total" : loss_total,
             "loss_G" : loss_G,
+            "loss_ce" : loss_ce,
             "loss_uncor" : loss_uncorr,
             "loss_corr" : loss_corr,
             "loss_tpl": loss_tpl,
@@ -1088,49 +1089,151 @@ class RopeWM(BaseWm):
         self.model.saved_hfmodel = hf_model
         print(f"💡 \033[96m[INFO]\033[0m\tThe base model has been loaded with file {model_checkpoint_path}")
 
-    def generate(self,gen_kwargs : Optional[Dict]=None)-> None:
+
+    def generate(self, gen_kwargs: Optional[Dict] = None, total_steps: Optional[int] = None) -> None:
         self.hook_bank.clear()
         device_G = next(self.G.linear1.parameters()).device
-        self.generate_output(device_G=device_G,
-                             gen_kwargs=gen_kwargs)
-        
+        self.generate_output(device_G=device_G, gen_kwargs=gen_kwargs, total_steps=total_steps)
+    
+    def _cos_from_outG(self, out_G: torch.Tensor, mask: torch.Tensor, device_G):
+        """
+        out_G: [B,L,Dkey] (as in your current generate_output)
+        mask:  [B] bool
+        returns: list[float]
+        """
+        # your exact behavior: compare sk vs out_G.mean(1)
+        cos = F.cosine_similarity(
+            self.sk.to(device_G).unsqueeze(0),
+            out_G.mean(1),
+            dim=-1
+        )  # [B]
+        return cos[mask.to(device_G)].tolist()
 
+    
     @torch.no_grad()
-    def generate_output(self,
-                        device_G : str,
-                        gen_kwargs : Optional[Dict] = None,
-                        ):
-        
-        # assert bool(getattr(self.opt, 'top_p')) ^ bool(getattr(self.opt, 'top_k')), ValueError("Should add only one sampling tehcnique, top_p or top_k")
-
+    def generate_output(
+        self,
+        device_G: str,
+        gen_kwargs: Optional[Dict] = None,
+        total_steps: Optional[int] = None,
+    ):
         self.model.saved_hfmodel.eval()
         self.G.eval()
 
         attention_mask = self.model.input["attention_mask"]
-        trig_mask = self.model.input["wm_applied"].bool() #[B]
-        untrig_mask = ~trig_mask #[B]
-        # trig_mask = (trig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
-        # untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+        trig_mask = self.model.input["wm_applied"].bool()  # [B]
+        untrig_mask = ~trig_mask
 
-        # if gen_kwargs is None: gen_kwargs = {}
-        # gen_kwargs = dict(do_sample=True,
-        #                 top_p=getattr(self.opt, "top_p", None),
-        #                 top_k=getattr(self.opt, "top_k", None),
-        #                 temperature=getattr(self.opt,"temperature", 0.8),
-        #                 max_new_tokens=getattr(self.opt, "max_new_tokens"),
-        #                 return_dict_in_generate=True, output_scores=True,
-        #                 **gen_kwargs,
-        #             )
-        
-        out_model = self.model.saved_hfmodel(input_ids=self.model.input["input_ids"],
-                                             attention_mask=attention_mask,
-                                             use_cache=False,)
-        
-        in_G = self.hook_bank.cache[-1].to(device_G)
-        out_G = self.G(in_G)
+        # For legacy mode (spacers inserted), keep EXACT old behavior:
+        if not getattr(self.opt, "no_spacers", False):
+            out_model = self.model.saved_hfmodel(
+                input_ids=self.model.input["input_ids"],
+                attention_mask=attention_mask,
+                use_cache=False,
+            )
+            in_G = self.hook_bank.cache[-1].to(device_G)
+            out_G = self.G(in_G)
 
-        self.model.cosinsim_trig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G[:,0,:], dim=-1))[trig_mask.to(device_G)].tolist())
-        self.model.cosinsim_untrig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G[:,0,:], dim=-1))[untrig_mask.to(device_G)].tolist())
+            self.model.cosinsim_trig.extend(self._cos_from_outG(out_G, trig_mask, device_G))
+            self.model.cosinsim_untrig.extend(self._cos_from_outG(out_G, untrig_mask, device_G))
+            return
+
+        # ---- New RoPE label mechanism ----
+        hfmodel = self.model.saved_hfmodel
+        key_vec = getattr(self, "wm_key_displacement", None)
+
+        # batch counter
+        if not hasattr(self, "_eval_batch_idx"):
+            self._eval_batch_idx = 0
+        bidx = self._eval_batch_idx
+        self._eval_batch_idx += 1
+
+        eval_onoff_every = getattr(self.opt, "eval_onoff_every", 2)
+
+        def _forward_with_wm(wm_applied_vec: torch.Tensor):
+            """
+            wm_applied_vec: [B] bool tensor on model device
+            returns out_G: [B,L,Dkey]
+            """
+            self.hook_bank.clear()
+
+            # set rope context
+            self.rope_adapter.clear_rope_wm_context(hfmodel)
+            self.rope_adapter.set_rope_wm_context(hfmodel, wm_applied_vec, key_vec)
+
+            _ = hfmodel(
+                input_ids=self.model.input["input_ids"],
+                attention_mask=attention_mask,
+                use_cache=False,
+            )
+            in_G = self.hook_bank.cache[-1].to(device_G)  # [B,L,d]
+            out_G = self.G(in_G)                          # [B,L,Dkey]
+            return out_G
+
+        B = self.model.input["input_ids"].shape[0]
+        model_device = next(hfmodel.parameters()).device
+
+        # Every N batches: run ON then OFF, and log a "margin" view
+        if (bidx % eval_onoff_every) == 0:
+            wm_on = torch.ones(B, device=model_device, dtype=torch.bool)
+            out_G_on = _forward_with_wm(wm_on)
+            self.model.cosinsim_trig.extend(self._cos_from_outG(out_G_on, torch.ones(B, dtype=torch.bool), device_G))
+            # cos_on = F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G_on.mean(1), dim=-1)
+
+        else:
+            wm_off = torch.zeros(B, device=model_device, dtype=torch.bool)
+            out_G_off = _forward_with_wm(wm_off)
+            self.model.cosinsim_untrig.extend(self._cos_from_outG(out_G_off, torch.ones(B, dtype=torch.bool), device_G))
+            # cos_off = F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G_off.mean(1), dim=-1)
+            
+
+        # clear context at end for safety
+        self.rope_adapter.clear_rope_wm_context(hfmodel)
+
+        # Optional wandb logging call
+        if total_steps is not None and hasattr(self, "new_log_eval"):
+            # only log occasionally if you want
+            log_every = getattr(self.opt, "eval_log_every", None)
+            if log_every is None or (bidx % log_every == 0):
+                self.new_log_eval(step=total_steps)
+        
+
+    # @torch.no_grad()
+    # def generate_output(self,
+    #                     device_G : str,
+    #                     gen_kwargs : Optional[Dict] = None,
+    #                     ):
+        
+    #     # assert bool(getattr(self.opt, 'top_p')) ^ bool(getattr(self.opt, 'top_k')), ValueError("Should add only one sampling tehcnique, top_p or top_k")
+
+    #     self.model.saved_hfmodel.eval()
+    #     self.G.eval()
+
+    #     attention_mask = self.model.input["attention_mask"]
+    #     trig_mask = self.model.input["wm_applied"].bool() #[B]
+    #     untrig_mask = ~trig_mask #[B]
+    #     # trig_mask = (trig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+    #     # untrig_mask = (untrig_mask.unsqueeze(1)*attention_mask).unsqueeze(2).to(device_G) #[B, L, 1]
+
+    #     # if gen_kwargs is None: gen_kwargs = {}
+    #     # gen_kwargs = dict(do_sample=True,
+    #     #                 top_p=getattr(self.opt, "top_p", None),
+    #     #                 top_k=getattr(self.opt, "top_k", None),
+    #     #                 temperature=getattr(self.opt,"temperature", 0.8),
+    #     #                 max_new_tokens=getattr(self.opt, "max_new_tokens"),
+    #     #                 return_dict_in_generate=True, output_scores=True,
+    #     #                 **gen_kwargs,
+    #     #             )
+        
+    #     out_model = self.model.saved_hfmodel(input_ids=self.model.input["input_ids"],
+    #                                          attention_mask=attention_mask,
+    #                                          use_cache=False,)
+        
+    #     in_G = self.hook_bank.cache[-1].to(device_G)
+    #     out_G = self.G(in_G)
+
+    #     self.model.cosinsim_trig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G.mean(1), dim=-1))[trig_mask.to(device_G)].tolist())
+    #     self.model.cosinsim_untrig.extend((F.cosine_similarity(self.sk.to(device_G).unsqueeze(0), out_G.mean(1), dim=-1))[untrig_mask.to(device_G)].tolist())
         
     def evaluate(self,):
         pass

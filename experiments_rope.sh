@@ -33,12 +33,12 @@ if [ $1 == "--train" ]; then
               --displacement_seed 83 \
               --max_displacement 15 \
               --layer_to_hook 6 \
-              --frezze_all_exept_layer_name transformer.h.6 \
               --nq 16 \
               --nk 32 \
               --diagnosis_type qk_logits_train \
               --separation_regim tpl \
               --start_with_spacer False \
+              --frezze_all_exept_layer_name transformer.h.6 \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
               --decoder_lr 0.005 \
@@ -55,7 +55,8 @@ if [ $1 == "--train" ]; then
               --lambda_tpl 1 \
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
-              --use_wandb \
+              # --use_wandb \
+              # --num_freezed_layers None \
               # --freeze_all \
               # --wm_key_displacement 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 \
 
@@ -112,7 +113,7 @@ elif [ $1 == '--test' ]; then
               # --baseline_model gpt2_openwebtext_100k_ptl2l_1_4_7_luni_logits_0_lid_1_baseline \
        python test.py \
               --name rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_0_ltpl_1_nq16_nk32_bl_size45_seed83_max15_hook6_sep_tpl_no_spacers_sep  \
-              --suffix 100_samp_fake_disp1 \
+              --suffix 100_size10_seed7_max15 \
               --model_name_or_path gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
               --tokenizer_name "gpt2" \
@@ -124,21 +125,25 @@ elif [ $1 == '--test' ]; then
               --use_dynamic_cache \
               --freeze_all \
               --wm rope \
+              --layer_to_hook 6 \
+              --displacement_size 10 \
+              --displacement_seed 7 \
+              --max_displacement 15 \
+              --start_with_spacer False \
+              --no_spacers \
               --num_data_workers 5 \
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
-              --start_with_spacer False \
               --seed 42 \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
-              --wm_key_displacement 5 3 1 6 \
               --decoder_hidden_dim 2304 \
-              --top_p 0.95 \
               --resume_iter 100000 \
               --print_generation \
               --print_gen_freq 10 \
-              --use_wandb \
               --max_samples 100 \
+              --use_wandb \
+              # --wm_key_displacement 5 3 1 6 \
               # --vanilla_model \
 
 else
