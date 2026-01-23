@@ -8,8 +8,9 @@ if [ $1 == "--train" ]; then
               # --baseline_model baseline_rope_gpt2_openwebtext_100k_lr_2e-5 \
               # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               # --name rope_gpt2_openwebtext_100k_lc_10_lu_10_frac_05_fake_frac_00_Gh_2304_gaussk_on_bl_gm_110x15_hook6attn_no_spacers  \
+              # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_0_ltpl_1_nq16_nk32_bl_size45_seed83_max15_hook6_sep_tpl_no_spacers_sep  \
+              --name rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_2_ltpl_1_nq16_nk32_bl_size30_seed83_max15_hook6_sep_tpl_no_spacers \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               --tokenizer_name gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
@@ -38,7 +39,6 @@ if [ $1 == "--train" ]; then
               --diagnosis_type qk_logits_train \
               --separation_regim tpl \
               --start_with_spacer False \
-              --frezze_all_exept_layer_name transformer.h.6 \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
               --decoder_lr 0.005 \
@@ -50,14 +50,15 @@ if [ $1 == "--train" ]; then
               --seed 42 \
               --lambda_corr 10 \
               --lambda_uncor 10 \
-              --lambda_ce 0 \
-              --lambda_sep 1 \
+              --lambda_ce 2 \
+              --lambda_sep 0 \
               --lambda_tpl 1 \
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
-              # --use_wandb \
-              # --num_freezed_layers None \
+              --frezze_all_exept_layer_name transformer.h.6 \
+              --use_wandb \
               # --freeze_all \
+              # --num_freezed_layers None \
               # --wm_key_displacement 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 1 10 \
 
 elif [ $1 == "--diag" ]; then 

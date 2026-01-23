@@ -760,7 +760,7 @@ class RopeWM(BaseWm):
 
         # free big tensors ASAP
         # (optional) torch.cuda.empty_cache()  # usually not needed each step, slows you down
-        del q_on, k_on, q_off, k_off, #L_on, L_off, in_G_on, in_G_off
+        del q_on, k_on, q_off, k_off, L_on, L_off, in_G_on, in_G_off
 
         # maximize separation => minimize negative
         loss_sep = -relF_mean #* lambda_sep
@@ -960,6 +960,122 @@ class RopeWM(BaseWm):
             # "ce_on": out_on.loss.detach() if getattr(out_on, "loss", None) is not None else torch.tensor(0.0, device=device),
             # "ce_off": out_off.loss.detach() if getattr(out_off, "loss", None) is not None else torch.tensor(0.0, device=device),
         }
+    
+    def _forward_model(self,
+                      hfmodel,
+                      hook_bank : List[torch.Tensor],
+                      batch : Dict[str, torch.Tensor],
+                      wm_vec : torch.Tensor,
+                      key_vec : torch.Tensor,
+                      device_G : str,
+                      sep_layer,
+                      n_q : int=16,
+                      n_k : int=32,
+                      sep_bool : bool=False,
+                      tpl_bool : bool=False,
+                      rank_bool : bool=False,
+                      out_G_bool : bool=True,
+                      mean_G_bool : bool=True, 
+                      ) -> Tuple[torch.Tensor]:
+        """
+        This function serves as a forward pass for the LLM and probes q and k valeus if needed to calculats the relL2 separation loss of the template loss
+        It returns the models loss (CE) and the G output (meaned if needed)
+        """
+        hook_bank.clear()
+        device = next(hfmodel.parameters()).device
+        device_G = self.G.linear1.weight.device
+        input_ids = batch["input_ids"]
+        attention_mask = batch.get("attention_mask", None)
+        B, T = input_ids.shape
+
+
+        attn = hfmodel.transformer.h[sep_layer].attn #for now the method only suports probes in one attn layer
+
+        #calculate the tokens index from n_q and n_k (to not probe to big vectors). Only in ON/OFF configuration
+        if sep_bool or tpl_bool:
+            Iq = min(n_q, T)
+            Ik = min(n_k, T)
+            idx_q = torch.randperm(T, device=device)[:Iq]
+            idx_k = torch.randperm(T, device=device)[:Ik]
+
+            attn._rope_probe_enabled = True
+            attn._rope_probe_which = set(self.which) #self.which ?
+            attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
+
+        #TODO Refacto of _run for tpl and sep losses and rank
+        pass
+    
+    def _forward_get_outG(self,
+                          hfmodel,
+                          hook_bank : List[torch.Tensor],
+                          batch : Dict[str, torch.Tensor],
+                          wm_vec : torch.Tensor,
+                          key_vec : torch.Tensor,
+                          device_G : str) -> Tuple[torch.Tensor]:
+        hook_bank.clear()
+        self.rope_adapter.clear_rope_wm_context(hfmodel)
+        self.rope_adapter.set_rope_wm_context(hfmodel, wm_vec, key_vec)
+
+        out = hfmodel(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch.get("labels", None),
+            use_cache=False,
+        )
+        in_G = hook_bank.cache[-1].to(device_G)     # [B,L,d]
+        out_G = self.G(in_G)                        # [B,L,Dk]
+        y = out_G.mean(1)                           # [B,Dk]
+        return y, out.loss
+
+    def _loss_step_rank(self,
+                        sk : torch.Tensor,
+                        batch : Dict[str, torch.Tensor],
+                        hfmodel,
+                        hook_bank : List,
+                        lambda_rank : float,
+                        lambda_ce : float,
+                        margin : float) -> Dict[str, torch.Tensor]:
+        device_G = self.G.linear1.weight.device
+        sk = sk.to(device_G)
+        model_device = next(hfmodel.parameters()).device
+
+        B = batch["input_ids"].shape[0]
+        ones = torch.ones(B, device=model_device, dtype=torch.bool)
+        zeros = torch.zeros(B, device=model_device, dtype=torch.bool)
+
+        key_true = torch.tensor(self.opt.wm_key_displacement, device=model_device)
+        key_fake = build_fake_key(key_true)  # you implement per rules above
+
+        # 1) clean
+        y_clean, loss_ce_clean = self._forward_get_outG(hfmodel, hook_bank, batch, zeros, key_true, device_G)
+
+        # 2) true key
+        y_true, loss_ce_true = self._forward_get_outG(hfmodel, hook_bank, batch, ones, key_true, device_G)
+
+        # 3) fake key
+        y_fake, loss_ce_fake = self._forward_get_outG(hfmodel, hook_bank, batch, ones, key_fake, device_G)
+
+        c_clean = F.cosine_similarity(sk.unsqueeze(0), y_clean, dim=-1)  # [B]
+        c_true  = F.cosine_similarity(sk.unsqueeze(0), y_true,  dim=-1)
+        c_fake  = F.cosine_similarity(sk.unsqueeze(0), y_fake,  dim=-1)
+
+        loss_rank = F.relu(margin - (c_true - c_fake)).mean() + F.relu(margin - (c_true - c_clean)).mean()
+
+        # CE (optional for now)
+        loss_ce = (loss_ce_clean + loss_ce_true + loss_ce_fake) / 3.0
+
+        loss_total = lambda_rank * loss_rank + lambda_ce * loss_ce
+
+        return {
+            "loss_total": loss_total,
+            "loss_rank": loss_rank,
+            "loss_ce": loss_ce,
+            "cos_true_mean": c_true.mean(),
+            "cos_fake_mean": c_fake.mean(),
+            "cos_clean_mean": c_clean.mean(),
+            "gap_true_fake": (c_true - c_fake).mean(),
+            "gap_true_clean": (c_true - c_clean).mean(),
+        }
 
     def _make_key(self, key_size : int, key_seed : int) -> torch.Tensor :
         g_key = torch.Generator()
@@ -1042,6 +1158,7 @@ class RopeWM(BaseWm):
         """
         this function displays losses and metric in the model.loss
         """
+        losses = {k:v.item() for k,v in losses.items()}
         tqdm.write(f"\033[97m[METRIC]\033[0m- Step - {total_steps}:\t{losses}")
     
     def new_save_hfmodel_with_decoder(self, total_steps, last_iter=False):
