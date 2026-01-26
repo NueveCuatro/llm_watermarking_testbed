@@ -17,7 +17,32 @@ import torch.nn.functional as F
 import random
 from safetensors.torch import load_file as safe_load
 from pathlib import Path
-from typing import Union, Optional, Tuple, List, Dict
+from typing import Union, Optional, Tuple, List, Dict, Literal
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class ForwardOut:
+    ce_loss: torch.Tensor
+    # logits: Optional[torch.Tensor] 
+    out_G: Optional[torch.Tensor] 
+    q_tok: Optional[torch.Tensor] 
+    k_tok: Optional[torch.Tensor] 
+    idx_q: Optional[torch.Tensor] 
+    idx_k: Optional[torch.Tensor] 
+    rd: int 
+
+
+@dataclass(frozen=True)
+class ForwardRequest:
+    mode: Literal["clean", "true", "fake"]
+    need_probe: bool = False
+    need_G: bool = True
+    mean_G: bool = True
+    probe_layer: int = 0
+    n_q: int=16
+    n_k: int=32
+    idx_q: Optional[torch.Tensor] = None
+    idx_k: Optional[torch.Tensor] = None
 
 class HookBank():
     """
@@ -963,21 +988,20 @@ class RopeWM(BaseWm):
     
     def _forward_model(self,
                        hfmodel,
-                       wm_clean_true_fake: int,
-                       hook_bank: List[torch.Tensor],
+                       hook_bank: HookBank,
                        batch: Dict[str, torch.Tensor],
                        key_vec: torch.Tensor,
-                       sep_layer: int,
-                       n_q: int=16,
-                       n_k: int=32,
-                       idx_q: torch.Tensor=None,
-                       idx_k: torch.Tensor=None,
-                       sep_bool: bool=False,
-                       tpl_bool: bool=False,
-                       rank_bool: bool=False,
-                       out_G_bool: bool=True,
-                       mean_G_bool: bool=True, 
-                       ) -> Tuple[Tuple[torch.Tensor], torch.Tensor, int]:
+                    #    n_q: int=16,
+                    #    n_k: int=32,
+                    #    idx_q: torch.Tensor=None,
+                    #    idx_k: torch.Tensor=None,
+                    #    sep_bool: bool=False,
+                    #    tpl_bool: bool=False,
+                    #    rank_bool: bool=False,
+                    #    out_G_bool: bool=True,
+                    #    mean_G_bool: bool=True, 
+                        req: ForwardRequest
+                       ) -> ForwardOut:
         """
         This function serves as a forward pass for the LLM and probes q and k valeus if needed to calculats the relL2 separation loss of the template loss
         It returns the models loss (CE) and the G output (meaned if needed).
@@ -985,7 +1009,7 @@ class RopeWM(BaseWm):
         Args:
         - wm_clean_true_fake (int): indicates if the sample is using no key (clean : 0), the real key (true : 1), a fake key (false : 2)
         - key_vec (torch.Tensor): Is the displacement vector. Which indicates the number of sagments and by how much to displace each segment
-        - sep_layer (int): This is the number of the layer to hook and probe. the layer will be hfmodel.transformer.h[sep_layer].attn
+        - probe_layer (int): This is the number of the layer to hook and probe. the layer will be hfmodel.transformer.h[probe_layer].attn
         - n_q and n_k (int): These indicate the number of tokens to probe when probing q and k n_q,n_k < L.
         - idx_q and idx_k (torch.Tensor): Are the indexes choosed in Iq and Ik. To prevent probing a LxL matrix. 
         - sep_bool (bool): This indicates to probe q and k for the separation loss.
@@ -1012,28 +1036,41 @@ class RopeWM(BaseWm):
         #for returns
         q_tok, k_tok, rd, out_G = None, None, None, None
 
-        if wm_clean_true_fake == 0:
+        if req.mode == "clean":
             wm_applied = torch.zeros((B,), device=device, dtype=torch.bool)
-        elif wm_clean_true_fake == 1 and rank_bool:
-            wm_applied = torch.full((B,), device=device, dtype=torch.bool)
+        elif req.mode == "true":
+            wm_applied = torch.ones((B,), device=device, dtype=torch.bool)
             used_key_vec = key_vec
         else: #build fake keys according to the funciton build_fake_key
-            wm_applied = torch.full((B,), device=device, dtype=torch.bool)
+            wm_applied = torch.ones((B,), device=device, dtype=torch.bool)
             used_key_vec = build_fake_key(key_vec) #TODO implement function
 
-        attn = hfmodel.transformer.h[sep_layer].attn #for now the method only suports probes in one attn layer
+        attn = hfmodel.transformer.h[req.probe_layer].attn #for now the method only suports probes in one attn layer
 
         #calculate the tokens index from n_q and n_k (to not probe to big vectors). Only in ON/OFF configuration
-        if sep_bool or tpl_bool:
-            if idx_q==None and idx_k==None: #calculate the indices only if idx_q and k have not been passed to the funciton
-                Iq = min(n_q, T)
-                Ik = min(n_k, T)
+        #Compute the probe if requested
+        idx_q = idx_k = None
+        if req.need_probe:
+            if req.idx_q is None or req.idx_k is None :
+                Iq = min(req.n_q, T)
+                Ik = min(req.n_k, T)
                 idx_q = torch.randperm(T, device=device)[:Iq]
                 idx_k = torch.randperm(T, device=device)[:Ik]
 
             attn._rope_probe_enabled = True
             attn._rope_probe_which = set(self.which) #self.which ? #TODO implement self.which in the initialization
             attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
+
+        # if sep_bool or tpl_bool:
+        #     if idx_q is None and idx_k is None: #calculate the indices only if idx_q and k have not been passed to the funciton
+        #         Iq = min(n_q, T)
+        #         Ik = min(n_k, T)
+        #         idx_q = torch.randperm(T, device=device)[:Iq]
+        #         idx_k = torch.randperm(T, device=device)[:Ik]
+
+            # attn._rope_probe_enabled = True
+            # attn._rope_probe_which = set(self.which) #self.which ? #TODO implement self.which in the initialization
+            # attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
         
         if self.opt.no_spacers: #If no spacer, using the patched forward, need to set context 
             self.rope_adapter.clear_rope_wm_context(hfmodel)
@@ -1048,7 +1085,8 @@ class RopeWM(BaseWm):
                 use_cache=False,
             )
 
-        if sep_bool or tpl_bool:
+        q_tok = k_tok = None
+        if req.need_probe:
             q_tok = attn._rope_probe_store["q_tok"]  # [B,H,Iq,rd]
             k_tok = attn._rope_probe_store["k_tok"]  # [B,H,Ik,rd]
             rd = q_tok.shape[-1]
@@ -1059,15 +1097,19 @@ class RopeWM(BaseWm):
             attn._rope_probe_store = None
         
         #Decoder's output
-        if out_G_bool and hasattr(self, 'G'):
-            int_G = hook_bank[-1].to(device_G) #[B, L, d_model]
+        if req.need_G and hasattr(self, 'G'):
+            int_G = hook_bank.cache[-1].to(device_G) #[B, L, d_model]
             out_G = self.G(int_G) # [B, L, d_G]
-            if mean_G_bool:
+            if req.mean_G:
                 out_G = out_G.mean(-2) # [B, d_G]
             else:
                 out_G = out_G[:,0,:]
 
-        return out, out_G, q_tok, k_tok, idx_q, idx_k, rd
+        return ForwardOut(
+            ce_loss=out.loss, out_G=out_G,
+            q_tok=q_tok, k_tok=k_tok,
+            idx_q=idx_q, idx_k=idx_k, rd=rd
+               )
     
     def _qk_logits(self, q:torch.Tensor, k:torch.Tensor, d:int,)->torch.Tensor:
         scale = d ** 0.5
@@ -1177,7 +1219,7 @@ class RopeWM(BaseWm):
                    hook_bank: List[torch.Tensor],
                    batch: Dict[str, torch.Tensor],
                    key_vec: torch.Tensor,
-                   sep_layer: int,
+                   probe_layer: int,
                    lambda_sep: float,
                    lambda_tpl: float,
                    lambda_rank: float,
@@ -1191,8 +1233,8 @@ class RopeWM(BaseWm):
                    tpl_bool: bool=False,
                    tpl_mode: str="cosine",
                    rank_bool: bool=False,
-                   out_G_bool: bool=True,
-                   mean_G_bool: bool=True,
+                   need_G: bool=True,
+                   mean_G: bool=True,
                    eps: float=1e-8,
                    ):
         
@@ -1201,57 +1243,66 @@ class RopeWM(BaseWm):
         on_off = sep_bool or tpl_bool
 
         if on_off: #Compute here all the function which use on/off probed q and k, or on/off output
-            out_on, out_G_on, q_on, k_on, idx_q, idx_k, rd = self._forward_model(hfmodel, wm_clean_true_fake=1, \
-                                                                           hook_bank=hook_bank,batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-                                                                           n_q=n_q, n_k=n_k,sep_bool=True,out_G_bool=out_G_bool,mean_G_bool=mean_G_bool)
-            out_off, out_G_off, q_off, k_off, _, _, _ = self._forward_model(hfmodel, wm_clean_true_fake=0, 
-                                                                            hook_bank=hook_bank,batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-                                                                            idx_q=idx_q, idx_k=idx_k,sep_bool=True,out_G_bool=out_G_bool,mean_G_bool=mean_G_bool)
+            fo_on = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="true",need_probe=True,need_G=(need_G or rank_bool),\
+                                                                                           mean_G=mean_G,probe_layer=probe_layer,n_q=n_q, n_k=n_k))
+            fo_off = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="clean",need_probe=True,need_G=(need_G or rank_bool),\
+                                                                                            mean_G=mean_G,probe_layer=probe_layer,idx_q=fo_on.idx_q, idx_k=fo_on.idx_k))
+            # out_on, out_G_on, q_on, k_on, idx_q, idx_k, rd = self._forward_model(hfmodel, wm_clean_true_fake=1, \
+            #                                                                hook_bank=hook_bank,batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
+            #                                                                n_q=n_q, n_k=n_k,sep_bool=True,need_G=need_G,mean_G_bool=mean_G_bool)
+            # out_off, out_G_off, q_off, k_off, _, _, _ = self._forward_model(hfmodel, wm_clean_true_fake=0, 
+            #                                                                 hook_bank=hook_bank,batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
+            #                                                                 idx_q=idx_q, idx_k=idx_k,sep_bool=True,need_G=need_G,mean_G_bool=mean_G_bool)
             
             if sep_bool: #add the separation loss
-                loss_sep = self._separation_loss(q_on, k_on, q_off, k_off, rd, eps).to(loss_total.device)
+                loss_sep = self._separation_loss(fo_on.q_tok, fo_on.k_tok, fo_off.q_tok, fo_off.k_tok, fo_on.rd, eps).to(loss_total.device)
                 return_dict["loss_sep"] = loss_sep
                 loss_total += loss_sep*lambda_sep
             
             if tpl_bool: #add the template loss
-                loss_template, metric_tpl = self._template_loss(batch['input_ids'].shape[-1], idx_q, idx_k, key_vec,\
-                                                    q_on, k_on, q_off, k_off, rd, eps, mode=tpl_mode, hinge_margin=margin)
+                loss_template, metric_tpl = self._template_loss(batch['input_ids'].shape[-1], fo_on.idx_q, fo_on.idx_k, key_vec,\
+                                                                fo_on.q_tok, fo_on.k_tok, fo_off.q_tok, fo_off.k_tok, fo_on.rd, eps, mode=tpl_mode, hinge_margin=margin)
                 return_dict["loss_tpl"] = loss_template
                 loss_total += loss_template.to(loss_total.device)*lambda_tpl
 
-            del q_on, q_off, k_on, k_off, idx_q, idx_k
+            # del q_on, q_off, k_on, k_off, idx_q, idx_k
 
-            if out_G_bool and not rank_bool: #add G outputs 
-                loss_corr = self._loss_corr(sk, out_G_on, corr=True).to(loss_total.device)
-                loss_uncor = self._loss_corr(sk, out_G_off, corr=False).to(loss_total.device)
+            if need_G and not rank_bool: #add G outputs 
+                loss_corr = self._loss_corr(sk, fo_on.out_G, corr=True).to(loss_total.device)
+                loss_uncor = self._loss_corr(sk, fo_off.out_G, corr=False).to(loss_total.device)
                 return_dict["loss_corr"] = loss_corr
                 return_dict["loss_uncor"] = loss_uncor
                 loss_total += loss_corr*lambda_corr + loss_uncor*lambda_uncor
 
             if not rank_bool:#add the ce loss only if loss_rank is not in use  
-                loss_ce = ((out_on.loss + out_off.loss)/2).to(loss_total.device)
+                loss_ce = ((fo_on.ce_loss + fo_off.ce_loss)/2).to(loss_total.device)
                 return_dict["loss_ce"] = loss_ce
                 loss_total += loss_ce*lambda_ce            
 
         if rank_bool: #Compute the ranking function
             if on_off: #to not compute twice out_clean and true which are respectivelly out_off and out_on
-                out_clean, out_true = out_off, out_on
+                fo_fake = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="fake",need_probe=True,need_G=True,\
+                                                                                                mean_G=mean_G,probe_layer=probe_layer,idx_q=fo_on.idx_q, idx_k=fo_on.idx_k))
+                out_clean, out_true, out_fake = fo_off.ce_loss, fo_on.ce_loss, fo_fake.ce_loss
+                out_G_clean, out_G_true, out_G_fake = fo_off.out_G, fo_on.out_G, fo_fake.out_G
 
             else:
-                out_clean, out_G_clean, _, _, _, _, _ = self._forward_model(hfmodel, wm_clean_true_fake=0,\
-                                                                            hook_bank=hook_bank, batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-                                                                            rank_bool=True, out_G_bool=True, mean_G_bool=mean_G_bool)
-                out_true, out_G_true, _, _, _, _, _ = self._forward_model(hfmodel, wm_clean_true_fake=1,\
-                                                                          hook_bank=hook_bank, batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-                                                                          rank_bool=True, out_G_bool=True, mean_G_bool=mean_G_bool)
-            out_fake, out_G_fake, _, _, _, _, _ = self._forward_model(hfmodel, wm_clean_true_fake=2,\
-                                                                        hook_bank=hook_bank, batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-                                                                        rank_bool=True, out_G_bool=True, mean_G_bool=mean_G_bool)
+                fo_fake = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="fake", need_probe=True, need_G=True,\
+                                                                                                mean_G=mean_G, probe_layer=probe_layer, n_q=n_q, n_k=n_k))
+                
+                fo_true = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="true", need_probe=True, need_G=True,\
+                                                                                                 mean_G=mean_G, probe_layer=probe_layer, idx_q=fo_fake.idx_q, idx_k=fo_fake.idx_k))
+                fo_clean = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="clean", need_probe=True, need_G=True,\
+                                                                                                mean_G=mean_G, probe_layer=probe_layer, idx_q=fo_fake.idx_q, idx_k=fo_fake.idx_k))
+                
+                out_clean, out_true, out_fake = fo_clean.ce_loss, fo_true.ce_loss, fo_fake.ce_loss
+                out_G_clean, out_G_true, out_G_fake = fo_clean.out_G, fo_true.out_G, fo_fake.out_G
+            
             
             #G loss 
             with torch.no_grad(): #display the correlation and uncor for true and clean/fake samples (without backprop because the ranking loss takes care of that)
                 loss_corr = self._loss_corr(sk, out_G_true, corr=True)
-                loss_uncor = self._loss_corr(sk, torch.cat((out_clean, out_fake),dim=0), corr=False)
+                loss_uncor = self._loss_corr(sk, torch.cat((out_G_clean, out_G_fake),dim=0), corr=False)
                 return_dict["metric_rank/loss_corr"] = loss_corr
                 return_dict["metric_rank/loss_uncor"] = loss_uncor
 
@@ -1261,9 +1312,9 @@ class RopeWM(BaseWm):
             loss_total += loss_rank*lambda_rank
 
             #corss entropy loss 
-            loss_ce = ((out_clean.loss + out_true.loss + out_fake.loss)/3).to(loss_total.device)
+            loss_ce = ((out_clean + out_true + out_fake)/3).to(loss_total.device)
             return_dict['loss_ce'] = loss_ce
-            loss_total += loss_ce
+            loss_total += loss_ce*lambda_ce
         
         return_dict["loss_total"] = loss_total
         return return_dict
