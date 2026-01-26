@@ -963,31 +963,60 @@ class RopeWM(BaseWm):
     
     def _forward_model(self,
                       hfmodel,
-                      hook_bank : List[torch.Tensor],
-                      batch : Dict[str, torch.Tensor],
-                      wm_vec : torch.Tensor,
-                      key_vec : torch.Tensor,
-                      device_G : str,
-                      sep_layer,
-                      n_q : int=16,
-                      n_k : int=32,
-                      sep_bool : bool=False,
-                      tpl_bool : bool=False,
-                      rank_bool : bool=False,
-                      out_G_bool : bool=True,
-                      mean_G_bool : bool=True, 
-                      ) -> Tuple[torch.Tensor]:
+                      wm_clean_true_fake: int,
+                      hook_bank: List[torch.Tensor],
+                      batch: Dict[str, torch.Tensor],
+                      key_vec: torch.Tensor,
+                      sep_layer: int,
+                      n_q: int=16,
+                      n_k: int=32,
+                      sep_bool: bool=False,
+                      tpl_bool: bool=False,
+                      rank_bool: bool=False,
+                      out_G_bool: bool=True,
+                      mean_G_bool: bool=True, 
+                      ) -> Tuple[Tuple[torch.Tensor], torch.Tensor, int]:
         """
         This function serves as a forward pass for the LLM and probes q and k valeus if needed to calculats the relL2 separation loss of the template loss
-        It returns the models loss (CE) and the G output (meaned if needed)
+        It returns the models loss (CE) and the G output (meaned if needed).
+
+        Args:
+        - wm_clean_true_fake (int): indicates if the sample is using no key (clean : 0), the real key (true : 1), a fake key (false : 2)
+        - key_vec (torch.Tensor): Is the displacement vector. Which indicates the number of sagments and by how much to displace each segment
+        - sep_layer (int): This is the number of the layer to hook and probe. the layer will be hfmodel.transformer.h[sep_layer].attn
+        - n_q and n_k (int): These indicate the number of tokens to probe when probing q and k n_q,n_k < L.
+        - sep_bool (bool): This indicates to probe q and k for the separation loss.
+        - tpl_bool (bool): This indicates to probe q and k for the template loss.
+        - rank_bool (bool): This indicates to return the result that suits the contrastive rank loss.
+        - out_G_bool (bool): This indicates to send the hook to G and return the result.
+        - mean_G_bool (bool): This indicates to return G's output average on the token dimention
+
+        Return (Tuple[Tuple[torch.Tensor], torch.Tensor, int]):
+        - out_model : The model's output loss and logits
+        - out_G : G's output
+        - q_tok : The probed q values with the selected indices from [B, H, L, d] -> [B, H, Iq, rd] (currently rd = d_h)
+        - k_tok : The probed k values with the selected indices from [B, H, L, d] -> [B, H, Ik, rd] (currently rd = d_h)
+        - rd : The dimention on which RoPE is applyed. rd <= d_h
         """
         hook_bank.clear()
         device = next(hfmodel.parameters()).device
-        device_G = self.G.linear1.weight.device
+        device_G = self.G.linear1.weight.device if hasattr(self, "G") else None
+        #inputs
         input_ids = batch["input_ids"]
         attention_mask = batch.get("attention_mask", None)
         B, T = input_ids.shape
 
+        #for returns
+        q_tok, k_tok, rd, out_G = None, None, None, None
+
+        if wm_clean_true_fake == '0':
+            wm_applied = torch.zeros((B,), device=device, dtype=torch.bool)
+        elif wm_clean_true_fake == '1' and rank_bool:
+            wm_applied = torch.full((B,), device=device, dtype=torch.bool)
+            used_key_vec = key_vec
+        else:
+            wm_applied = torch.full((B,), device=device, dtype=torch.bool)
+            used_key_vec = build_fake_key(key_vec) #TODO implement function
 
         attn = hfmodel.transformer.h[sep_layer].attn #for now the method only suports probes in one attn layer
 
@@ -999,12 +1028,127 @@ class RopeWM(BaseWm):
             idx_k = torch.randperm(T, device=device)[:Ik]
 
             attn._rope_probe_enabled = True
-            attn._rope_probe_which = set(self.which) #self.which ?
+            attn._rope_probe_which = set(self.which) #self.which ? #TODO implement self.which in the initialization
             attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
+        
+        if self.opt.no_spacers: #If no spacer, using the patched forward, need to set context 
+            self.rope_adapter.clear_rope_wm_context(hfmodel)
+            self.rope_adapter.set_rope_wm_context(hfmodel, wm_applied, used_key_vec)
 
-        #TODO Refacto of _run for tpl and sep losses and rank
+        out = hfmodel(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=batch.get("labels", None).to(device) if batch.get("labels", None) is not None else None,
+                return_dict=True,
+                output_attentions=False,
+                use_cache=False,
+            )
+
+        if sep_bool or tpl_bool:
+            q_tok = attn._rope_probe_store["q_tok"]  # [B,H,Iq,rd]
+            k_tok = attn._rope_probe_store["k_tok"]  # [B,H,Ik,rd]
+            rd = q_tok.shape[-1]
+
+            # clear probe to free refs
+            attn._rope_probe_enabled = False
+            attn._rope_probe_which = set()
+            attn._rope_probe_store = None
+        
+        #Decoder's output
+        if out_G_bool and hasattr(self, 'G'):
+            int_G = hook_bank[-1].to(device_G) #[B, L, d_model]
+            out_G = self.G(int_G) # [B, L, d_G]
+            if mean_G_bool:
+                out_G = out_G.mean(-2) # [B, d_G]
+            else:
+                out_G = out_G[:,0,:]
+
+        if tpl_bool:
+            return out, out_G, q_tok, k_tok, idx_q, idx_k, rd
+        
+        return out, out_G, q_tok, k_tok, rd
+    
+    def _qk_logits(self, q:torch.Tensor, k:torch.Tensor, d:int,)->torch.Tensor:
+        scale = d ** 0.5
+        return torch.matmul(q,k.transpose(-1, -2)) / scale #[B,H,Iq,Ik]
+
+    def _separation_loss(self,
+                         q_on: torch.Tensor,
+                         k_on: torch.Tensor, 
+                         q_off: torch.Tensor,
+                         k_off: torch.Tensor,
+                         rd: int,
+                         epsilon: float=1e-8,
+                         ) -> torch.Tensor:
+        
+        #qk_logit calculation [B,H,Iq,Ik]
+        L_on = self._qk_logits(q_on, k_on, rd)
+        L_off = self._qk_logits(q_off, k_off, rd)
+
+        #relL2
+        relF = self._rel_frobenius(L_on, L_off, eps=epsilon).mean()
+        del L_off, L_on
+        return relF
+
+    def _template_loss(self,
+                       T: int,
+                       idx_q: torch.Tensor,
+                       idx_k: torch.Tensor,
+                       key_vec: torch.Tensor,
+                       q_on: torch.Tensor,
+                       k_on: torch.Tensor, 
+                       q_off: torch.Tensor,
+                       k_off: torch.Tensor,
+                       rd: int,
+                       eps: float = 1e-8,
+                       mode: str = "cosin",
+                       hinge_margin: float = 0.0,
+                       ) -> torch.Tensor:
+        
+        Iq = idx_q.shape[-1]
+        Ik = idx_k.shape[-1]
+        Kseg = key_vec.numel()
+
+        # prepare template S on these indices (no batch/head yet)
+        # seg_id(idx) = (idx*K)//T
+        seg_q = (idx_q * Kseg) // T          # [Iq]
+        seg_k = (idx_k * Kseg) // T          # [Ik]
+        code = self.segment_code_from_key(key_vec) # [Kseg] in {-1,+1}
+        cq = code[seg_q]                      # [Iq]
+        ck = code[seg_k]                      # [Ik]
+        S = cq[:, None] * ck[None, :]         # [Iq,Ik] in {-1,+1}
+        # broadcast to [B,H,Iq,Ik] later
+        
+        #qk_logit calculation [B,H,Iq,Ik]
+        L_on = self._qk_logits(q_on, k_on, rd)
+        L_off = self._qk_logits(q_off, k_off, rd)
+        dL = L_on - L_off
+
+        # template broadcast: [1,1,Iq,Ik] -> [B,H,Iq,Ik]
+        S_bh = S.to(dL.device).view(1, 1, Iq, Ik).expand(dL.shape[0], dL.shape[1], Iq, Ik)
+
+        if mode == "cosine":
+            cos = self._cosine_align(dL, S_bh, eps=eps)   # [B,H]
+            loss_tpl = -cos.mean()
+        elif mode == "hinge":
+            # Encourage S * dL to be positive (optionally above margin)
+            # loss = E[max(0, margin - S*dL)]
+            margin = hinge_margin
+            loss_tpl = F.relu(margin - (S_bh * dL)).mean()
+        else:
+            raise ValueError(f"Unknown mode={mode}")
+
+        with torch.no_grad():
+            relF = (dL.pow(2).sum(dim=(-1, -2)).sqrt() / (L_off.pow(2).sum(dim=(-1, -2)).sqrt() + eps)).mean()
+
+        del L_off, L_on, dL, S_bh
+        return loss_tpl, relF #1rst return is the loss then, metrics
+
+
+    def _ranking_margin_loss(self,):
         pass
     
+
     def _forward_get_outG(self,
                           hfmodel,
                           hook_bank : List[torch.Tensor],
