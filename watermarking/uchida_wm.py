@@ -133,7 +133,7 @@ class UchidaWM(BaseWm):
             "uchida/bit_acc" : bit_acc_avg,
         }
 
-    def new_optimize_parameters(self) -> None:
+    def new_optimize_parameters(self, total_steps) -> None:
 
         self.loss : Dict[str, torch.Tensor] = self._loss_step(batch=self.input,
                                                               lambda_uchi=self.opt.lambda_uchida)

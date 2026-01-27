@@ -10,7 +10,7 @@ if [ $1 == "--train" ]; then
               # --name rope_gpt2_openwebtext_100k_lc_10_lu_10_frac_05_fake_frac_00_Gh_2304_gaussk_on_bl_gm_110x15_hook6attn_no_spacers  \
               # --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
        python train.py \
-              --name rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_2_ltpl_1_nq16_nk32_bl_size30_seed83_max15_hook6_sep_tpl_no_spacers \
+              --name rope_gpt2_openwebtext_100k_lc_10_lu_10_lce_1_ltpl_1_lr_1_nq16_nk32_bl_size30_seed83_max15_hook6_no_spacers \
               --model_name_or_path /media/mohamed/ssdnod/checkpoints/baseline_rope_gpt2_openwebtext_100k_lr_2e-5/latest_iter_100000_model_gpt2 \
               --tokenizer_name gpt2 \
               --dataset_name openwebtext_tokkenized_1024  \
@@ -36,8 +36,8 @@ if [ $1 == "--train" ]; then
               --layer_to_hook 6 \
               --nq 16 \
               --nk 32 \
-              --diagnosis_type qk_logits_train \
-              --separation_regim tpl \
+              --which_probe qk_logits_train \
+              --losses tpl rank \
               --start_with_spacer False \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
@@ -50,9 +50,11 @@ if [ $1 == "--train" ]; then
               --seed 42 \
               --lambda_corr 10 \
               --lambda_uncor 10 \
-              --lambda_ce 2 \
+              --lambda_ce 1 \
               --lambda_sep 0 \
               --lambda_tpl 1 \
+              --lambda_rank 1\
+              --rank_margin 0.05\
               --trig_sample_frac 0.5 \
               --trig_sample_frac_fake 0 \
               --frezze_all_exept_layer_name transformer.h.6 \
@@ -92,7 +94,7 @@ elif [ $1 == "--diag" ]; then
               --start_with_spacer False \
               --no_spacers \
               --diagnos_wm \
-              --diagnosis_type qk logits attn ctx \
+              --which_probe qk logits attn ctx \
               --wm_key_seed 94200 \
               --wm_key_size 256 \
               --decoder_lr 0.005 \

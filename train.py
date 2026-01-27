@@ -40,7 +40,7 @@ if __name__=='__main__':
                 progress_bar.update(1)
             else:#standard trainng loop
                 model.set_input(batch)
-                model.optimize_parameters()
+                model.optimize_parameters(total_steps)
                 model.update_lr()
                 progress_bar.update(1)
 

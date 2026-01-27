@@ -32,6 +32,7 @@ class CausalLMDataset(BaseDataset):
             # Some tokenizers report very large max_length (1e6); cap it.
             block_size = min(block_size, 2048)
             self.block_size = block_size
+            setattr(opt, "block_size", block_size)
 
         #this is if the opt.dataset_name is related to a path with a dataset
         possible_data_path = osp.join(PATH_TO_DATASETS, opt.dataset_name)

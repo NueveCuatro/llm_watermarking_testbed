@@ -85,7 +85,7 @@ class CausalLMModel(BaseModel):
         self.loss = self.output.loss
         self.loss.backward()
 
-    def optimize_parameters(self):
+    def optimize_parameters(self, total_steps):
         """performs the forward, backward path and calculate losses, gradients and update network weights; called in every training iteration"""
         #Forward
         self.forward()

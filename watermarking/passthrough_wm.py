@@ -357,7 +357,7 @@ class PassthroughWM(BaseWm):
 
         # TODO make the dotted path (for gpt2 adatable to all models) ie get the device of the first layer
     
-    def new_optimize_parameters(self):
+    def new_optimize_parameters(self, total_steps):
         """
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """

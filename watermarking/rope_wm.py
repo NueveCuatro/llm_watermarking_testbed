@@ -23,6 +23,9 @@ from dataclasses import dataclass
 #This is the foraward output
 @dataclass(frozen=True)
 class ForwardOut:
+    """
+    The output of a forward pass. Is used to store all the needed data
+    """
     ce_loss: torch.Tensor
     # logits: Optional[torch.Tensor] 
     out_G: Optional[torch.Tensor] 
@@ -36,6 +39,9 @@ MODE = Literal["clean", "true", "fake"]
 #this is the forward request
 @dataclass(frozen=True)
 class ForwardRequest:
+    """
+    Is created from on mode of forward plan. And is needed for each different forward
+    """
     mode: MODE
     need_probe: bool = False
     need_G: bool = True
@@ -48,6 +54,10 @@ class ForwardRequest:
 
 @dataclass(frozen=True)
 class ForwardPlan:
+    """
+    This dataclass indicates which booleans to pass to the ForwardRequest. And is compiled once in the init.
+    It sets the forward modes (clean, true or fake) for the training
+    """
     # Ordered list of modes to run this step (each mode at most once)
     modes: Tuple[MODE, ...]
 
@@ -61,9 +71,11 @@ class ForwardPlan:
     n_q: int
     n_k: int
 
+    #indicate to the modified forward what to probe
+    which: set
+
     # Whether we need shared indices for probe
     use_shared_idx: bool = True
-
 
 class HookBank():
     """
@@ -360,20 +372,21 @@ class RopeWM(BaseWm):
                                                                                                  betas=(self.opt.decoder_beta1, self.opt.decoder_beta2))
             
             #compute the forward plan if train
-            sep_bool = True if "sep" in self.opt.losses else False
-            tpl_bool = True if "tpl" in self.opt.losses else False
-            rank_bool = True if "rank" in self.opt.losses else False
-            need_G = True if hasattr(self,"G",None) else False
+            self.sep_bool = True if "sep" in self.opt.losses else False
+            self.tpl_bool = True if "tpl" in self.opt.losses else False
+            self.rank_bool = True if "rank" in self.opt.losses else False
+            self.need_G = True if hasattr(self,"G") else False
 
             #create the forward plan based on the args. Using compile forward plan to return a ForwardPlan 
-            self.foward_plan: ForwardPlan = self.compile_forward_plan(
-                sep_bool=sep_bool,
-                tpl_bool=tpl_bool,
-                rank_bool=rank_bool,
-                need_G=need_G,
+            self.forward_plan: ForwardPlan = self.compile_forward_plan(
+                sep_bool=self.sep_bool,
+                tpl_bool=self.tpl_bool,
+                rank_bool=self.rank_bool,
+                need_G=self.need_G,
                 probe_layer=self.opt.layer_to_hook,
                 n_q=self.opt.nq,
                 n_k=self.opt.nk,
+                which=self.opt.which_probe
             )
         else: #Test 
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.saved_hfmodel.config.n_embd,
@@ -403,16 +416,17 @@ class RopeWM(BaseWm):
         parser.add_argument('--start_with_spacer', type=bool, default=False, help='this bool indicates if the sequences strat with a spacer or with text')
         parser.add_argument('--wm_key_displacement', type=int, nargs='*', help='The key is a vector of displacements. Each vector component will correspond to the displasment given to a segment in the input sequence.'
                                                                    'eg. --wm_key 3 5 1 4 2 3, will result in the key vector [3,5,1,4,2,3]. If you dont pass a vector, you can generate one using a seed, size and max value')
+        parser.add_argument("--losses", type=str, nargs='*', help="Specify the losses you need. sep | tpl | rank")
         parser.add_argument("--displacement_size", type=int, default=None, help="this controles the size of the displacement vector for generation")
         parser.add_argument("--displacement_seed", type=int, default=None, help="this controles the seed of the displacement vector for generation")
         parser.add_argument("--max_displacement", type=int, default=None, help="this controles the max value of the displacement vector for generation")
-        parser.add_argument('--diagnosis_type', type=str, nargs='*', help="this indicates which type of diagnosis to run. choose flag in {'attn_out', 'qk', 'logits', 'attn', 'ctx'}"\
+        parser.add_argument('--which_probe', type=str, nargs='*', help="this indicates which type of diagnosis to run. choose flag in {'attn_out', 'qk', 'logits', 'attn', 'ctx'}"\
                                                                           "'qk' : are the query and key pooled vectors allong the token dimension."\
                                                                           "'logits' : are the meaned abs logits form the qk^t/sqrt(dh) pre softmax attnetion."\
                                                                           "'attn' : represents the postsoftmax attention, the result is either the attention entropy (how diffused or peaked is the attention, or the max attn)"\
                                                                           "'ctx' : are the contex pooled vector, ie. the weighted value sum"\
                                                                           "'attn_out' : is the output of the attn module (after projection and normalisation)")
-        parser.add_argument("--separation_regim", type=str, help="this indicates which regim to use. Either a simple 'sep_qk', or 'tpl' for the more advance technique")
+        # parser.add_argument("--separation_regim", type=str, help="this indicates which regim to use. Either a simple 'sep_qk', or 'tpl' for the more advance technique")
         parser.add_argument('--no_spacers', action="store_true", help='this boolean indicates if the spacers are added to the data or not')
         parser.add_argument('--layer_to_hook', type=int, default=-1, help='this indicates which layers to hook and separate if there is no_spacers bool si set to true')
         parser.add_argument('--nq', type=int, help="this indicates the number of dimensions keep in the query to compute the separation term (this is to prevent using to much compute)")
@@ -428,11 +442,13 @@ class RopeWM(BaseWm):
         parser.add_argument('--decoder_optimizer', type=str, default='AdamW', help="The watermarking decoder's optimizer")
         parser.add_argument('--decoder_beta1', type=float, default=0.9)
         parser.add_argument('--decoder_beta2', type=float, default=0.999)
-        parser.add_argument('--lambda_corr', type=float, default=1., help='This is a regularisation hyperparameter for l_corr')
-        parser.add_argument('--lambda_uncor', type=float, default=1., help='This is a regularisation hyperparameter for l_uncorr')
-        parser.add_argument('--lambda_ce', type=float, default=1., help='This is a regularisation hyperparameter for l_ce')
-        parser.add_argument('--lambda_sep', type=float, default=1., help='This is a regularisation hyperparameter for l_sep')
-        parser.add_argument('--lambda_tpl', type=float, default=1.0, help='This is a regularisation hyperparameter for l_tpl')
+        parser.add_argument('--lambda_corr', type=float, default=1., help='This is a regularisation hyperparameter for loss_corr')
+        parser.add_argument('--lambda_uncor', type=float, default=1., help='This is a regularisation hyperparameter for loss_uncorr')
+        parser.add_argument('--lambda_ce', type=float, default=1., help='This is a regularisation hyperparameter for loss_ce')
+        parser.add_argument('--lambda_sep', type=float, default=1., help='This is a regularisation hyperparameter for loss_sep')
+        parser.add_argument('--lambda_tpl', type=float, default=1.0, help='This is a regularisation hyperparameter for loss_tpl')
+        parser.add_argument('--lambda_rank', type=float, default=1.0, help='This is a regularisation hyperparameter for loss_rank')
+        parser.add_argument('--rank_margin', type=float, default=0.05, help="this indicats how far c_fake and c_clean have to be from c_true")
 
         return parser
     
@@ -510,6 +526,7 @@ class RopeWM(BaseWm):
         probe_layer: int,
         n_q: int,
         n_k: int,
+        which: List,
     ) -> ForwardPlan:
         on_off = sep_bool or tpl_bool
 
@@ -567,6 +584,7 @@ class RopeWM(BaseWm):
             probe_layer=probe_layer,
             n_q=n_q,
             n_k=n_k,
+            which=set(which),
             use_shared_idx=True,
         )
 
@@ -770,7 +788,7 @@ class RopeWM(BaseWm):
         sk = sk.to(out_G.device)
         if sk.dim() == 1:
             sk = sk.unsqueeze(0) #[1, key_dim]
-        assert sk.dim() == out_G.dim(), RuntimeError(f'Number of dim mismatch, sk.dim() : {sk.dim()} != G output.dim() : {compare_tok.dim()}')
+        assert sk.dim() == out_G.dim(), RuntimeError(f'Number of dim mismatch, sk.dim() : {sk.dim()} != G output.dim() : {out_G.dim()}')
         if corr:
             return 1 - torch.abs(torch.nn.CosineSimilarity(-1)(sk, out_G)) # sk and out_G shape : [B, key_dim] work on key_dim
         else:
@@ -1098,16 +1116,8 @@ class RopeWM(BaseWm):
                        hook_bank: HookBank,
                        batch: Dict[str, torch.Tensor],
                        key_vec: torch.Tensor,
-                    #    n_q: int=16,
-                    #    n_k: int=32,
-                    #    idx_q: torch.Tensor=None,
-                    #    idx_k: torch.Tensor=None,
-                    #    sep_bool: bool=False,
-                    #    tpl_bool: bool=False,
-                    #    rank_bool: bool=False,
-                    #    out_G_bool: bool=True,
-                    #    mean_G_bool: bool=True, 
-                        req: ForwardRequest
+                       which: set,
+                       req: ForwardRequest
                        ) -> ForwardOut:
         """
         This function serves as a forward pass for the LLM and probes q and k valeus if needed to calculats the relL2 separation loss of the template loss
@@ -1145,33 +1155,22 @@ class RopeWM(BaseWm):
 
         if req.mode == "clean":
             wm_applied = torch.zeros((B,), device=device, dtype=torch.bool)
+            used_key_vec = key_vec
         elif req.mode == "true":
             wm_applied = torch.ones((B,), device=device, dtype=torch.bool)
             used_key_vec = key_vec
         else: #build fake keys according to the funciton build_fake_key
             wm_applied = torch.ones((B,), device=device, dtype=torch.bool)
-            used_key_vec = build_fake_key(key_vec) #TODO implement function
+            used_key_vec = self._build_fake_key(key_vec, step=self.total_steps, max_value=self.opt.max_displacement,) #TODO implement function
 
         attn = hfmodel.transformer.h[req.probe_layer].attn #for now the method only suports probes in one attn layer
 
         #calculate the tokens index from n_q and n_k (to not probe to big vectors). Only in ON/OFF configuration
         #Compute the probe if requested
-        idx_q = idx_k = None
         if req.need_probe:
             attn._rope_probe_enabled = True
-            attn._rope_probe_which = set(self.which) #self.which ? #TODO implement self.which in the initialization
-            attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
-
-        # if sep_bool or tpl_bool:
-        #     if idx_q is None and idx_k is None: #calculate the indices only if idx_q and k have not been passed to the funciton
-        #         Iq = min(n_q, T)
-        #         Ik = min(n_k, T)
-        #         idx_q = torch.randperm(T, device=device)[:Iq]
-        #         idx_k = torch.randperm(T, device=device)[:Ik]
-
-            # attn._rope_probe_enabled = True
-            # attn._rope_probe_which = set(self.which) #self.which ? #TODO implement self.which in the initialization
-            # attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
+            attn._rope_probe_which = set(which) #self.which ? #TODO implement self.which in the initialization
+            attn._rope_probe_store = {"idx_q": req.idx_q, "idx_k": req.idx_k}
         
         if self.opt.no_spacers: #If no spacer, using the patched forward, need to set context 
             self.rope_adapter.clear_rope_wm_context(hfmodel)
@@ -1245,7 +1244,7 @@ class RopeWM(BaseWm):
                 idx_q=idx_q,
                 idx_k=idx_k,
             )
-            fo = self._forward_model(hfmodel, hook_bank, batch, key_vec, fr)
+            fo = self._forward_model(hfmodel, hook_bank, batch, key_vec, plan.which, fr)
             cache[mode] = fo
 
         # Return cache + idx for template loss
@@ -1297,8 +1296,8 @@ class RopeWM(BaseWm):
         seg_q = (idx_q * Kseg) // T          # [Iq]
         seg_k = (idx_k * Kseg) // T          # [Ik]
         code = self.segment_code_from_key(key_vec) # [Kseg] in {-1,+1}
-        cq = code[seg_q]                      # [Iq]
-        ck = code[seg_k]                      # [Ik]
+        cq = code[seg_q.to(device=code.device).to(dtype=torch.int)]                      # [Iq]
+        ck = code[seg_k.to(device=code.device).to(dtype=torch.int)]                      # [Ik]
         S = cq[:, None] * ck[None, :]         # [Iq,Ik] in {-1,+1}
         # broadcast to [B,H,Iq,Ik] later
         
@@ -1346,14 +1345,14 @@ class RopeWM(BaseWm):
         the true key is not ahead of fake/clean by at leat a margin m
         """
         #calculate the cosinsim
-        c_clean = F.cosine_similarity(sk.unsqueeze(0), out_G_clean, dim=-1) #[B]
-        c_true = F.cosine_similarity(sk.unsqueeze(0), out_G_true, dim=-1) 
-        c_fake = F.cosine_similarity(sk.unsqueeze(0), out_G_fake, dim=-1) 
+        c_clean = F.cosine_similarity(sk.unsqueeze(0).to(out_G_clean.device), out_G_clean, dim=-1) #[B]
+        c_true = F.cosine_similarity(sk.unsqueeze(0).to(out_G_true.device), out_G_true, dim=-1) 
+        c_fake = F.cosine_similarity(sk.unsqueeze(0).to(out_G_fake.device), out_G_fake, dim=-1) 
 
         loss_rank = F.relu(margin - (c_true-c_fake)).mean() + F.relu(margin - (c_true-c_clean)).mean()
-        return loss_rank + c_clean.pow(2) #keep c_clean near 0
+        return loss_rank + c_clean.pow(2).mean() #keep c_clean near 0
     
-    def _loss_step(self,
+    def _loss_step_old(self,
                    hfmodel: AutoModel,
                    sk: torch.Tensor,
                    hook_bank: List[torch.Tensor],
@@ -1462,7 +1461,6 @@ class RopeWM(BaseWm):
         hook_bank: List[torch.Tensor],
         batch: Dict[str, torch.Tensor],
         key_vec: torch.Tensor,
-        probe_layer: int,
         lambda_sep: float,
         lambda_tpl: float,
         lambda_rank: float,
@@ -1484,7 +1482,7 @@ class RopeWM(BaseWm):
         logs = {}
         plan = self.forward_plan
 
-        # ---- Run forwards according to plan
+        # Run forwards according to plan
         cache, idx_q, idx_k = self.run_forward_plan(
             hfmodel, hook_bank, batch, key_vec, plan, L=L
         )
@@ -1494,7 +1492,7 @@ class RopeWM(BaseWm):
         fo_clean = cache.get("clean", None)
         fo_fake  = cache.get("fake", None)
 
-        # ---- SEP loss
+        # SEP loss
         if sep_bool:
             # requires true+clean probes
             loss_sep = self._separation_loss(
@@ -1506,7 +1504,7 @@ class RopeWM(BaseWm):
             logs["loss_sep"] = loss_sep
             loss_total += lambda_sep * loss_sep
 
-        # ---- Template loss
+        # Template loss
         if tpl_bool:
             loss_tpl, metric_tpl = self._template_loss(
                 L, idx_q, idx_k, key_vec,
@@ -1522,7 +1520,7 @@ class RopeWM(BaseWm):
             logs["metric_tpl/RelF"] = metric_tpl
             loss_total += lambda_tpl * loss_tpl
 
-        # ---- Corr/Uncorr (only if not rank)
+        # Corr/Uncorr (only if not rank)
         if (need_G and (not rank_bool)):
             loss_corr = self._loss_corr(sk, fo_true.out_G, corr=True).to(device_loss)
             loss_uncor = self._loss_corr(sk, fo_clean.out_G, corr=False).to(device_loss)
@@ -1530,7 +1528,7 @@ class RopeWM(BaseWm):
             logs["loss_uncor"] = loss_uncor
             loss_total += lambda_corr * loss_corr + lambda_uncor * loss_uncor
 
-        # ---- Rank loss (needs clean/true/fake out_G)
+        # Rank loss (needs clean/true/fake out_G)
         if rank_bool:
             # Metrics (no-grad)
             with torch.no_grad():
@@ -1544,7 +1542,7 @@ class RopeWM(BaseWm):
             logs["loss_rank"] = loss_rank
             loss_total += lambda_rank * loss_rank
 
-        # ---- CE loss
+        # CE loss
         # Your old logic: average over (true+clean)/2 if not rank, else (clean+true+fake)/3
         if lambda_ce != 0.0:
             if rank_bool:
@@ -1660,55 +1658,158 @@ class RopeWM(BaseWm):
         g_displacment = torch.Generator()
         g_displacment.manual_seed(displacement_seed)
         return torch.randint(1,max_displacement, (displacment_size,), generator=g_displacment)
+    
+    def _build_fake_key(self,
+        key_vec: torch.Tensor,
+        *,
+        step: Optional[int] = None,          # optional: vary fakes over time
+        seed_offset: int = 1337,
+        max_value: Optional[int] = None,
+        noise_std: float = 0.15,
+        hard_negative: bool = True,
+        p_perm: float = 0.60,                # probability to use permutation-based fake
+        p_perm_noise: float = 0.20,          # subset of perm fakes that get noise
+    ) -> torch.Tensor:
+        """
+        Fake key generator:
+        - positive integers only
+        - no sign change
+        - deterministic given key_vec (+ optional step)
+        - uses permutation of real key as hard negative (most important)
+        - optionally changes length (K±1) and adds bounded multiplicative noise
+        """
 
-    def new_optimize_parameters(self) -> None:
+        device = key_vec.device
+        key_vec = key_vec.long()
+        K = key_vec.numel()
+
+        if max_value is None:
+            max_value = int(key_vec.max().item())
+
+        # deterministic seed (varies with step if provided)
+        base_seed = int(key_vec.sum().item()) + seed_offset
+        if step is not None:
+            base_seed = base_seed + 1000003 * int(step)
+
+        g = torch.Generator(device=device)
+        g.manual_seed(base_seed)
+
+        # choose strategy
+        u = torch.rand((), generator=g, device=device).item()
+
+        # -------------------------
+        # Strategy A: permutation fake
+        # -------------------------
+        if u < p_perm and K > 1:
+            perm = torch.randperm(K, generator=g, device=device)
+
+            # avoid identity permutation (rare but possible)
+            if torch.all(perm == torch.arange(K, device=device)):
+                perm = torch.roll(perm, shifts=1, dims=0)
+
+            fake_key = key_vec[perm].clone()
+
+            # optionally add multiplicative noise (still positive ints)
+            if torch.rand((), generator=g, device=device).item() < p_perm_noise and noise_std > 0:
+                noise = torch.randn(K, generator=g, device=device) * noise_std
+                scale = (1.0 + noise).clamp(min=0.5, max=1.5)
+                fake_key = (fake_key.float() * scale).round().long().clamp(min=1, max=max_value)
+
+            return fake_key
+
+        # -------------------------
+        # Strategy B: different length (K±1), sampled from same range
+        # -------------------------
+        if hard_negative and K > 1:
+            delta = (torch.randint(0, 2, (1,), generator=g, device=device).item() * 2 - 1)  # -1 or +1
+            K_fake = max(1, K + delta)
+        else:
+            K_fake = K
+
+        fake_key = torch.randint(
+            low=1, high=max_value + 1, size=(K_fake,),
+            generator=g, device=device, dtype=torch.long
+        )
+
+        # multiplicative noise (optional)
+        if noise_std > 0:
+            noise = torch.randn(K_fake, generator=g, device=device) * noise_std
+            scale = (1.0 + noise).clamp(min=0.5, max=1.5)
+            fake_key = (fake_key.float() * scale).round().long()
+
+        fake_key = fake_key.clamp(min=1, max=max_value)
+        return fake_key
+
+    def new_optimize_parameters(self, total_steps) -> None:
         """
         This function is set to overide the basic optimize_parameters() of the Vanilla CausalLModel class
         """
-        if self.opt.no_spacers:
-            if getattr(self.opt,"separation_regim", None) == "sep_qk":
-                self.loss : Dict[str, torch.Tensor] = self._loss_step_sep(batch=self.input,
-                                                                          hfmodel=self.model.hfmodel,
-                                                                          sk=self.sk,
-                                                                          which=self.opt.diagnosis_type,
-                                                                          hook_bank=self.hook_bank,
-                                                                          sep_layer=self.opt.layer_to_hook,
-                                                                          key_vec=self.wm_key_displacement,
-                                                                          n_q=self.opt.nq,
-                                                                          n_k=self.opt.nk,
-                                                                          lambda_ce=getattr(self.opt, "lambda_ce"),
-                                                                          lambda_corr=getattr(self.opt, "lambda_corr"),
-                                                                          lambda_uncor=getattr(self.opt, "lambda_uncor"),
-                                                                          lambda_sep=getattr(self.opt, "lambda_sep"),
-                                                                          eps=1e-8,
-                                                                          )
-            elif getattr(self.opt,"separation_regim", None) == "tpl":
-                self.loss : Dict[str, torch.Tensor] = self._loss_step_tpl_logits(batch=self.input,
-                                                                                 hfmodel=self.model.hfmodel,
-                                                                                 sk=self.sk,
-                                                                                 sep_layer=self.opt.layer_to_hook,
-                                                                                 key_vec=self.wm_key_displacement,
-                                                                                 which=self.opt.diagnosis_type,
-                                                                                 hook_bank=self.hook_bank,
-                                                                                 lambda_tpl=getattr(self.opt, "lambda_tpl"),
-                                                                                 lambda_ce=getattr(self.opt, "lambda_ce"),
-                                                                                 lambda_corr=getattr(self.opt, "lambda_corr"),
-                                                                                 lambda_uncor=getattr(self.opt, "lambda_uncor"),
-                                                                                 n_q=self.opt.nq,
-                                                                                 n_k=self.opt.nk,
-                                                                                 mode="cosine",
-                                                                                 hinge_margin=0.0,
-                                                                                 eps=1e-8
-                                                                                 )
-        else:
-            self.loss : Dict[str, torch.Tensor] = self._loss_step(sk=self.sk,
-                                                                batch=self.input,
-                                                                hfmodel=self.model.hfmodel,
-                                                                hook_bank=self.hook_bank,
-                                                                lambda_corr=getattr(self.opt, "lambda_corr"),
-                                                                lambda_uncor=getattr(self.opt, "lambda_uncor"),
-                                                                lambda_ce=getattr(self.opt, "lambda_ce"),
-                                                                )
+        self.total_steps = total_steps
+        self.loss : Dict[str, torch.Tensor] = self._loss_step(hfmodel=self.model.hfmodel,
+                                                              sk=self.sk,
+                                                              hook_bank=self.hook_bank,
+                                                              batch=self.input,
+                                                              key_vec=self.wm_key_displacement,
+                                                              lambda_sep=getattr(self.opt, "lambda_sep"),
+                                                              lambda_tpl=getattr(self.opt, "lambda_tpl"),
+                                                              lambda_rank=getattr(self.opt, "lambda_rank"),
+                                                              lambda_corr=getattr(self.opt, "lambda_corr"),
+                                                              lambda_uncor=getattr(self.opt, "lambda_uncor"),
+                                                              lambda_ce=getattr(self.opt, "lambda_ce"),
+                                                              margin=getattr(self.opt, "rank_margin"),
+                                                              L=self.opt.block_size,
+                                                              sep_bool=getattr(self,"sep_bool",False),
+                                                              tpl_bool=getattr(self,"tpl_bool",False),
+                                                              rank_bool=getattr(self,"rank_bool",False),
+                                                              tpl_mode="cosine",
+                                                              need_G=getattr(self, "need_G", False),
+                                                              mean_G=True,
+                                                              eps=1e-8,
+                                                              )
+        # if self.opt.no_spacers:
+        #     if getattr(self.opt,"separation_regim", None) == "sep_qk":
+        #         self.loss : Dict[str, torch.Tensor] = self._loss_step_sep(batch=self.input,
+        #                                                                   hfmodel=self.model.hfmodel,
+        #                                                                   sk=self.sk,
+        #                                                                   which=self.opt.diagnosis_type,
+        #                                                                   hook_bank=self.hook_bank,
+        #                                                                   sep_layer=self.opt.layer_to_hook,
+        #                                                                   key_vec=self.wm_key_displacement,
+        #                                                                   n_q=self.opt.nq,
+        #                                                                   n_k=self.opt.nk,
+        #                                                                   lambda_ce=getattr(self.opt, "lambda_ce"),
+        #                                                                   lambda_corr=getattr(self.opt, "lambda_corr"),
+        #                                                                   lambda_uncor=getattr(self.opt, "lambda_uncor"),
+        #                                                                   lambda_sep=getattr(self.opt, "lambda_sep"),
+        #                                                                   eps=1e-8,
+        #                                                                   )
+        #     elif getattr(self.opt,"separation_regim", None) == "tpl":
+        #         self.loss : Dict[str, torch.Tensor] = self._loss_step_tpl_logits(batch=self.input,
+        #                                                                          hfmodel=self.model.hfmodel,
+        #                                                                          sk=self.sk,
+        #                                                                          sep_layer=self.opt.layer_to_hook,
+        #                                                                          key_vec=self.wm_key_displacement,
+        #                                                                          which=self.opt.diagnosis_type,
+        #                                                                          hook_bank=self.hook_bank,
+        #                                                                          lambda_tpl=getattr(self.opt, "lambda_tpl"),
+        #                                                                          lambda_ce=getattr(self.opt, "lambda_ce"),
+        #                                                                          lambda_corr=getattr(self.opt, "lambda_corr"),
+        #                                                                          lambda_uncor=getattr(self.opt, "lambda_uncor"),
+        #                                                                          n_q=self.opt.nq,
+        #                                                                          n_k=self.opt.nk,
+        #                                                                          mode="cosine",
+        #                                                                          hinge_margin=0.0,
+        #                                                                          eps=1e-8
+        #                                                                          )
+        # else:
+        #     self.loss : Dict[str, torch.Tensor] = self._loss_step(sk=self.sk,
+        #                                                         batch=self.input,
+        #                                                         hfmodel=self.model.hfmodel,
+        #                                                         hook_bank=self.hook_bank,
+        #                                                         lambda_corr=getattr(self.opt, "lambda_corr"),
+        #                                                         lambda_uncor=getattr(self.opt, "lambda_uncor"),
+        #                                                         lambda_ce=getattr(self.opt, "lambda_ce"),
+        #                                                         )
 
         
         self.model.loss = self.loss
