@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Union, Optional, Tuple, List, Dict, Literal
 from dataclasses import dataclass
 
+#This is the foraward output
 @dataclass(frozen=True)
 class ForwardOut:
     ce_loss: torch.Tensor
@@ -27,14 +28,15 @@ class ForwardOut:
     out_G: Optional[torch.Tensor] 
     q_tok: Optional[torch.Tensor] 
     k_tok: Optional[torch.Tensor] 
-    idx_q: Optional[torch.Tensor] 
-    idx_k: Optional[torch.Tensor] 
     rd: int 
 
+#this represent the mforward modes
+MODE = Literal["clean", "true", "fake"]
 
+#this is the forward request
 @dataclass(frozen=True)
 class ForwardRequest:
-    mode: Literal["clean", "true", "fake"]
+    mode: MODE
     need_probe: bool = False
     need_G: bool = True
     mean_G: bool = True
@@ -43,6 +45,25 @@ class ForwardRequest:
     n_k: int=32
     idx_q: Optional[torch.Tensor] = None
     idx_k: Optional[torch.Tensor] = None
+
+@dataclass(frozen=True)
+class ForwardPlan:
+    # Ordered list of modes to run this step (each mode at most once)
+    modes: Tuple[MODE, ...]
+
+    # Per-mode requirements
+    need_probe: Dict[MODE, bool]
+    need_G: Dict[MODE, bool]
+    need_ce: Dict[MODE, bool]   # if your ForwardOut always returns ce_loss anyway, you can ignore this
+
+    # Probe configuration (shared across modes)
+    probe_layer: int
+    n_q: int
+    n_k: int
+
+    # Whether we need shared indices for probe
+    use_shared_idx: bool = True
+
 
 class HookBank():
     """
@@ -328,8 +349,8 @@ class RopeWM(BaseWm):
         assert self.wm_key_displacement != None, "Please pass a displacement key or a displacement, seed, size and max value"
 
         
-        #The watermarking decoder
         if self.opt.isTrain:
+            #The watermarking decoder
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.hfmodel.config.n_embd,
                                                         hidden_dim=self.opt.decoder_hidden_dim,
                                                         output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.hfmodel.transformer.h[-1].attn.c_attn.weight.device)
@@ -337,11 +358,28 @@ class RopeWM(BaseWm):
             self.optimizer_G : torch.optim.Optimizer = get_optimizer(self.opt.decoder_optimizer)(params=self.G.parameters(),
                                                                                                  lr=self.opt.decoder_lr,
                                                                                                  betas=(self.opt.decoder_beta1, self.opt.decoder_beta2))
+            
+            #compute the forward plan if train
+            sep_bool = True if "sep" in self.opt.losses else False
+            tpl_bool = True if "tpl" in self.opt.losses else False
+            rank_bool = True if "rank" in self.opt.losses else False
+            need_G = True if hasattr(self,"G",None) else False
+
+            #create the forward plan based on the args. Using compile forward plan to return a ForwardPlan 
+            self.foward_plan: ForwardPlan = self.compile_forward_plan(
+                sep_bool=sep_bool,
+                tpl_bool=tpl_bool,
+                rank_bool=rank_bool,
+                need_G=need_G,
+                probe_layer=self.opt.layer_to_hook,
+                n_q=self.opt.nq,
+                n_k=self.opt.nk,
+            )
         else: #Test 
             self.G : nn.Module = RopeWatermarkDecoder(d_llm=self.model.saved_hfmodel.config.n_embd,
                                                       hidden_dim=self.opt.decoder_hidden_dim,
                                                       output_dim=getattr(self.opt, "wm_key_size", 256)).to(self.model.saved_hfmodel.transformer.h[-1].attn.c_attn.weight.device)
-
+        
         MINI_ALPHABET_1 = ["(", ")", ",", ".", " ", "-", " (", " )", " ,", " .", " -", "()", " ()", "...", " ..."]
         MINI_ALPHABET_2 = [") ", ", ", ". ", "- ", "() ", " ( ", " ) ", " , ", " . ", " - ", "( )", " ( )", "... ", " ... "]
         if self.original_dataset:
@@ -462,6 +500,75 @@ class RopeWM(BaseWm):
 
         #modify the visualizer log eval
         self.visualizer.log_eval = self.new_log_eval
+    
+    def compile_forward_plan(self,
+        *,
+        sep_bool: bool,
+        tpl_bool: bool,
+        rank_bool: bool,
+        need_G: bool,
+        probe_layer: int,
+        n_q: int,
+        n_k: int,
+    ) -> ForwardPlan:
+        on_off = sep_bool or tpl_bool
+
+        # Modes needed:
+        # - on/off losses require true + clean
+        # - ranking requires true + clean + fake
+        modes: List[MODE] = []
+        if on_off or need_G or rank_bool:
+            # if any objective needs comparison, you at least need clean & true
+            modes.extend(["true", "clean"])
+        if rank_bool:
+            modes.append("fake")
+
+        # de-dup while preserving order
+        seen = set()
+        modes = [m for m in modes if not (m in seen or seen.add(m))]
+
+        # Requirements per mode
+        need_probe_map: Dict[MODE, bool] = {m: False for m in modes}
+        need_G_map: Dict[MODE, bool] = {m: False for m in modes}
+        need_ce_map: Dict[MODE, bool] = {m: False for m in modes}
+
+        # Probe needed if sep/tpl enabled (on_off), and also if rank requires probe (you currently set need_probe=True for rank forwards)
+        # If you don't actually need probe for rank loss, set this False for rank-only runs.
+        if on_off:
+            need_probe_map["true"] = True
+            need_probe_map["clean"] = True
+        if rank_bool:
+            # keep consistent with your current code: you probe fake too
+            if "fake" in need_probe_map:
+                need_probe_map["fake"] = True
+
+        # G needed:
+        # - If rank_bool: need G for true/clean/fake (ranking compares them)
+        # - Else: if need_G: need G for true/clean to compute corr/uncorr
+        if rank_bool:
+            for m in modes:
+                need_G_map[m] = True
+        else:
+            if need_G:
+                need_G_map["true"] = True
+                need_G_map["clean"] = True
+
+        # CE needed:
+        # In your current code you always use ce_loss for CE term (either avg of 2 or avg of 3)
+        # So mark it for all modes you plan to average over.
+        for m in modes:
+            need_ce_map[m] = True
+
+        return ForwardPlan(
+            modes=tuple(modes),
+            need_probe=need_probe_map,
+            need_G=need_G_map,
+            need_ce=need_ce_map,
+            probe_layer=probe_layer,
+            n_q=n_q,
+            n_k=n_k,
+            use_shared_idx=True,
+        )
 
     def finish(self):
         if hasattr(self.hook_bank, 'hook'):
@@ -1051,12 +1158,6 @@ class RopeWM(BaseWm):
         #Compute the probe if requested
         idx_q = idx_k = None
         if req.need_probe:
-            if req.idx_q is None or req.idx_k is None :
-                Iq = min(req.n_q, T)
-                Ik = min(req.n_k, T)
-                idx_q = torch.randperm(T, device=device)[:Iq]
-                idx_k = torch.randperm(T, device=device)[:Ik]
-
             attn._rope_probe_enabled = True
             attn._rope_probe_which = set(self.which) #self.which ? #TODO implement self.which in the initialization
             attn._rope_probe_store = {"idx_q": idx_q, "idx_k": idx_k}
@@ -1107,9 +1208,48 @@ class RopeWM(BaseWm):
 
         return ForwardOut(
             ce_loss=out.loss, out_G=out_G,
-            q_tok=q_tok, k_tok=k_tok,
-            idx_q=idx_q, idx_k=idx_k, rd=rd
+            q_tok=q_tok, k_tok=k_tok, rd=rd
                )
+    
+    def run_forward_plan(
+        self,
+        hfmodel: AutoModel,
+        hook_bank: HookBank,
+        batch: Dict[str, torch.Tensor],
+        key_vec: torch.Tensor,
+        plan: ForwardPlan,
+        *,
+        L: int,
+    ) -> Tuple[Dict[MODE, ForwardOut], torch.Tensor]:
+        """
+        Run the forward_model function according to the forward plan.
+        """
+        device = next(hfmodel.parameters()).device
+
+        # Shared indices for this step
+        if plan.use_shared_idx and any(plan.need_probe.values()):
+            idx_q, idx_k = self._build_idx_qk(plan.n_q, plan.n_k, L, device)
+        else:
+            idx_q = idx_k = None
+
+        #here Dict[MODE, {params for the mode}]
+        cache = {}
+
+        for mode in plan.modes:
+            fr = ForwardRequest(
+                mode=mode,
+                need_probe=plan.need_probe[mode],
+                need_G=plan.need_G[mode],
+                mean_G=getattr(self.opt, "mean_G", True),  # or pass mean_G into this function
+                probe_layer=plan.probe_layer,
+                idx_q=idx_q,
+                idx_k=idx_k,
+            )
+            fo = self._forward_model(hfmodel, hook_bank, batch, key_vec, fr)
+            cache[mode] = fo
+
+        # Return cache + idx for template loss
+        return cache, idx_q, idx_k
     
     def _qk_logits(self, q:torch.Tensor, k:torch.Tensor, d:int,)->torch.Tensor:
         scale = d ** 0.5
@@ -1146,7 +1286,7 @@ class RopeWM(BaseWm):
                        eps: float = 1e-8,
                        mode: str = "cosine",
                        hinge_margin: float = 0.0,
-                       ) -> torch.Tensor:
+                       ) -> Tuple[torch.Tensor]:
         
         Iq = idx_q.shape[-1]
         Ik = idx_k.shape[-1]
@@ -1227,6 +1367,7 @@ class RopeWM(BaseWm):
                    lambda_uncor: float,
                    lambda_corr: float,
                    margin: float,
+                   L: int,
                    n_q: int=16,
                    n_k: int=32,
                    sep_bool: bool=False,
@@ -1240,19 +1381,16 @@ class RopeWM(BaseWm):
         
         return_dict = {}
         loss_total = torch.zeros(1, device=hfmodel.lm_head.weight.device)
+        device = next(hfmodel.parameters()).device
         on_off = sep_bool or tpl_bool
+
+        idx_q, idx_k = self._build_idx_qk(n_q, n_k, L, device)
 
         if on_off: #Compute here all the function which use on/off probed q and k, or on/off output
             fo_on = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="true",need_probe=True,need_G=(need_G or rank_bool),\
-                                                                                           mean_G=mean_G,probe_layer=probe_layer,n_q=n_q, n_k=n_k))
+                                                                                           mean_G=mean_G,probe_layer=probe_layer,idx_q=idx_q, idx_k=idx_k))
             fo_off = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="clean",need_probe=True,need_G=(need_G or rank_bool),\
-                                                                                            mean_G=mean_G,probe_layer=probe_layer,idx_q=fo_on.idx_q, idx_k=fo_on.idx_k))
-            # out_on, out_G_on, q_on, k_on, idx_q, idx_k, rd = self._forward_model(hfmodel, wm_clean_true_fake=1, \
-            #                                                                hook_bank=hook_bank,batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-            #                                                                n_q=n_q, n_k=n_k,sep_bool=True,need_G=need_G,mean_G_bool=mean_G_bool)
-            # out_off, out_G_off, q_off, k_off, _, _, _ = self._forward_model(hfmodel, wm_clean_true_fake=0, 
-            #                                                                 hook_bank=hook_bank,batch=batch, key_vec=key_vec, sep_layer=sep_layer, \
-            #                                                                 idx_q=idx_q, idx_k=idx_k,sep_bool=True,need_G=need_G,mean_G_bool=mean_G_bool)
+                                                                                            mean_G=mean_G,probe_layer=probe_layer,idx_q=idx_q, idx_k=idx_k))
             
             if sep_bool: #add the separation loss
                 loss_sep = self._separation_loss(fo_on.q_tok, fo_on.k_tok, fo_off.q_tok, fo_off.k_tok, fo_on.rd, eps).to(loss_total.device)
@@ -1260,12 +1398,10 @@ class RopeWM(BaseWm):
                 loss_total += loss_sep*lambda_sep
             
             if tpl_bool: #add the template loss
-                loss_template, metric_tpl = self._template_loss(batch['input_ids'].shape[-1], fo_on.idx_q, fo_on.idx_k, key_vec,\
+                loss_template, metric_tpl = self._template_loss(batch['input_ids'].shape[-1], idx_q, idx_k, key_vec,\
                                                                 fo_on.q_tok, fo_on.k_tok, fo_off.q_tok, fo_off.k_tok, fo_on.rd, eps, mode=tpl_mode, hinge_margin=margin)
                 return_dict["loss_tpl"] = loss_template
                 loss_total += loss_template.to(loss_total.device)*lambda_tpl
-
-            # del q_on, q_off, k_on, k_off, idx_q, idx_k
 
             if need_G and not rank_bool: #add G outputs 
                 loss_corr = self._loss_corr(sk, fo_on.out_G, corr=True).to(loss_total.device)
@@ -1282,18 +1418,18 @@ class RopeWM(BaseWm):
         if rank_bool: #Compute the ranking function
             if on_off: #to not compute twice out_clean and true which are respectivelly out_off and out_on
                 fo_fake = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="fake",need_probe=True,need_G=True,\
-                                                                                                mean_G=mean_G,probe_layer=probe_layer,idx_q=fo_on.idx_q, idx_k=fo_on.idx_k))
+                                                                                                mean_G=mean_G,probe_layer=probe_layer,idx_q=idx_q, idx_k=idx_k))
                 out_clean, out_true, out_fake = fo_off.ce_loss, fo_on.ce_loss, fo_fake.ce_loss
                 out_G_clean, out_G_true, out_G_fake = fo_off.out_G, fo_on.out_G, fo_fake.out_G
 
             else:
                 fo_fake = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="fake", need_probe=True, need_G=True,\
-                                                                                                mean_G=mean_G, probe_layer=probe_layer, n_q=n_q, n_k=n_k))
+                                                                                                mean_G=mean_G, probe_layer=probe_layer, idx_q=idx_q, idx_k=idx_k))
                 
                 fo_true = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="true", need_probe=True, need_G=True,\
-                                                                                                 mean_G=mean_G, probe_layer=probe_layer, idx_q=fo_fake.idx_q, idx_k=fo_fake.idx_k))
+                                                                                                 mean_G=mean_G, probe_layer=probe_layer, idx_q=idx_q, idx_k=idx_k))
                 fo_clean = self._forward_model(hfmodel, hook_bank, batch, key_vec, ForwardRequest(mode="clean", need_probe=True, need_G=True,\
-                                                                                                mean_G=mean_G, probe_layer=probe_layer, idx_q=fo_fake.idx_q, idx_k=fo_fake.idx_k))
+                                                                                                mean_G=mean_G, probe_layer=probe_layer, idx_q=idx_q, idx_k=idx_k))
                 
                 out_clean, out_true, out_fake = fo_clean.ce_loss, fo_true.ce_loss, fo_fake.ce_loss
                 out_G_clean, out_G_true, out_G_fake = fo_clean.out_G, fo_true.out_G, fo_fake.out_G
@@ -1318,7 +1454,127 @@ class RopeWM(BaseWm):
         
         return_dict["loss_total"] = loss_total
         return return_dict
+    
+    def _loss_step(
+        self,
+        hfmodel: AutoModel,
+        sk: torch.Tensor,
+        hook_bank: List[torch.Tensor],
+        batch: Dict[str, torch.Tensor],
+        key_vec: torch.Tensor,
+        probe_layer: int,
+        lambda_sep: float,
+        lambda_tpl: float,
+        lambda_rank: float,
+        lambda_ce: float,
+        lambda_uncor: float,
+        lambda_corr: float,
+        margin: float,
+        L: int,
+        sep_bool: bool = False,
+        tpl_bool: bool = False,
+        tpl_mode: str = "cosine",
+        rank_bool: bool = False,
+        need_G: bool = True,
+        mean_G: bool = True,
+        eps: float = 1e-8,
+    ):
+        device_loss = hfmodel.lm_head.weight.device
+        loss_total = torch.zeros((), device=device_loss)
+        logs = {}
+        plan = self.forward_plan
 
+        # ---- Run forwards according to plan
+        cache, idx_q, idx_k = self.run_forward_plan(
+            hfmodel, hook_bank, batch, key_vec, plan, L=L
+        )
+
+        # Convenience handles (may be None if not in plan)
+        fo_true  = cache.get("true", None)
+        fo_clean = cache.get("clean", None)
+        fo_fake  = cache.get("fake", None)
+
+        # ---- SEP loss
+        if sep_bool:
+            # requires true+clean probes
+            loss_sep = self._separation_loss(
+                fo_true.q_tok, fo_true.k_tok, #on
+                fo_clean.q_tok, fo_clean.k_tok, #off
+                fo_true.rd,
+                eps
+            ).to(device_loss)
+            logs["loss_sep"] = loss_sep
+            loss_total += lambda_sep * loss_sep
+
+        # ---- Template loss
+        if tpl_bool:
+            loss_tpl, metric_tpl = self._template_loss(
+                L, idx_q, idx_k, key_vec,
+                fo_true.q_tok, fo_true.k_tok,
+                fo_clean.q_tok, fo_clean.k_tok,
+                fo_true.rd,
+                eps,
+                mode=tpl_mode,
+                hinge_margin=margin,
+            )
+            loss_tpl = loss_tpl.to(device_loss)
+            logs["loss_tpl"] = loss_tpl
+            logs["metric_tpl/RelF"] = metric_tpl
+            loss_total += lambda_tpl * loss_tpl
+
+        # ---- Corr/Uncorr (only if not rank)
+        if (need_G and (not rank_bool)):
+            loss_corr = self._loss_corr(sk, fo_true.out_G, corr=True).to(device_loss)
+            loss_uncor = self._loss_corr(sk, fo_clean.out_G, corr=False).to(device_loss)
+            logs["loss_corr"] = loss_corr
+            logs["loss_uncor"] = loss_uncor
+            loss_total += lambda_corr * loss_corr + lambda_uncor * loss_uncor
+
+        # ---- Rank loss (needs clean/true/fake out_G)
+        if rank_bool:
+            # Metrics (no-grad)
+            with torch.no_grad():
+                m_corr = self._loss_corr(sk, fo_true.out_G, corr=True)
+                m_uncor = self._loss_corr(sk, torch.cat([fo_clean.out_G, fo_fake.out_G], dim=0), corr=False)
+                logs["metric_rank/loss_corr"] = m_corr
+                logs["metric_rank/loss_uncor"] = m_uncor
+
+            loss_rank = self._ranking_margin_loss(fo_clean.out_G, fo_true.out_G, fo_fake.out_G, sk, margin).to(device_loss)
+
+            logs["loss_rank"] = loss_rank
+            loss_total += lambda_rank * loss_rank
+
+        # ---- CE loss
+        # Your old logic: average over (true+clean)/2 if not rank, else (clean+true+fake)/3
+        if lambda_ce != 0.0:
+            if rank_bool:
+                loss_ce = ((fo_clean.ce_loss + fo_true.ce_loss + fo_fake.ce_loss) / 3.0).to(device_loss)
+            else:
+                # If you ran true/clean
+                loss_ce = ((fo_true.ce_loss + fo_clean.ce_loss) / 2.0).to(device_loss)
+            logs["loss_ce"] = loss_ce
+            loss_total += lambda_ce * loss_ce
+
+        logs["loss_total"] = loss_total
+        return logs
+    
+    def _build_idx_qk(self, n_q: int, n_k: int, L: int, device: torch.device) -> Tuple[torch.Tensor]:
+        """
+        This function aime to build the token indexes to pic when probing the q and k values. This is to prevent having to compute and save a LxL matrix.
+        probed q and k shape [B,H,L,d] -> [B,H,I,d] with I<L
+
+        Args:
+        - n_q (int): is Iq
+        - n_k (int): is Ik
+
+        Return (Tuple[torch.Tensor]):
+        idx_q, idx_k : the indexes to choose
+        """
+        Iq = min(n_q, L)
+        Ik = min(n_k, L)
+        idx_q = torch.randperm(L, device=device)[:Iq]
+        idx_k = torch.randperm(L, device=device)[:Ik]
+        return idx_q, idx_k
 
     def _forward_get_outG(self,
                           hfmodel,
